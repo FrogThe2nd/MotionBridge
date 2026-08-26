@@ -58,6 +58,8 @@ if ($Portable -and -not $CoreOnly) {
     New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
     Copy-Item (Join-Path $buildDirectory "MotionBridge.exe") (Join-Path $portableDir "MotionBridge.exe") -Force
     Copy-Item (Join-Path $workspace "portable.mode") (Join-Path $portableDir "portable.mode") -Force
+    Copy-Item (Join-Path $workspace "README.md") (Join-Path $portableDir "README.md") -Force
+    Copy-Item (Join-Path $workspace "README-ZH.md") (Join-Path $portableDir "README-ZH.md") -Force
     Copy-Item (Join-Path $workspace "THIRD_PARTY_NOTICES.md") (Join-Path $portableDir "THIRD_PARTY_NOTICES.md") -Force
     Copy-Item (Join-Path $workspace "assets\models\sr6\LICENSE-osr-emu.txt") (Join-Path $portableDir "LICENSE-osr-emu.txt") -Force
     & $deploy --qmldir (Join-Path $workspace "qml") --dir $portableDir (Join-Path $portableDir "MotionBridge.exe")

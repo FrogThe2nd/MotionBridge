@@ -1,8 +1,29 @@
 # Motion Bridge
 
+[简体中文](README-ZH.md)
+
 Native Windows bridge that converts real-time game motion into multi-axis device output. Fallen Doll is the first bundled game adapter, while the public `motion-frame/v1` input keeps the application open to additional games. The core is C++20 and does not depend on Qt; the desktop application uses Qt 6/QML.
 
 Motion Bridge has one real-time worker thread for file watching, motion calculation and output. QML only renders copied snapshots at its own cadence; it never blocks the device path.
+
+## Current features
+
+- Real-time L0/L1/L2/R0/R1/R2 processing for OSR2/SR6 workflows.
+- USB serial, Wi-Fi UDP (`tcode.local:8000` by default), and Intiface Desktop output.
+- Separate SR6/OSR 3D viewer with optional always-on-top mode.
+- Per-axis gain and output-range controls, saved beside the executable in portable mode.
+- Light and dark themes, plus English, Simplified Chinese, and system-language selection.
+- Safe startup, stream-loss hold and smooth return to center. Device output always starts disarmed.
+
+## Quick start with Fallen Doll
+
+1. Install the game-side Mod from [MotionBridge-FallenDoll](https://github.com/Huarch/MotionBridge-FallenDoll).
+2. Extract the Motion Bridge portable ZIP and run `MotionBridge.exe`.
+3. Enter an HAnime and wait for the stream status to show **ONLINE**.
+4. Open the separate 3D preview and check the motion before connecting hardware.
+5. Select USB, Wi-Fi, or Intiface, then explicitly choose **ARM OUTPUT**.
+
+The compatibility stream is currently read from `%USERPROFILE%/.f8/studio/games/fallen-doll/runtime/fd-skeleton.ndjson`; F8Studio, `fd_source`, and `fd_pyengine` do not need to be running.
 
 ## Development
 
