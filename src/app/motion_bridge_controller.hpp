@@ -8,7 +8,7 @@
 #include <QStringList>
 #include <QVariantList>
 
-class CompanionController final : public QObject {
+class MotionBridgeController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString streamStatus READ stream_status NOTIFY statusChanged)
     Q_PROPERTY(bool streamConnected READ stream_connected NOTIFY statusChanged)
@@ -31,8 +31,8 @@ class CompanionController final : public QObject {
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
 
 public:
-    explicit CompanionController(QObject* parent = nullptr);
-    ~CompanionController() override;
+    explicit MotionBridgeController(QObject* parent = nullptr);
+    ~MotionBridgeController() override;
 
     [[nodiscard]] QString stream_status() const;
     [[nodiscard]] bool stream_connected() const;

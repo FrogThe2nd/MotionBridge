@@ -1,12 +1,12 @@
 #include "realtime_pipeline.hpp"
-#include "companion_settings.hpp"
+#include "motion_bridge_settings.hpp"
 
 #include <QDir>
 
 #include <algorithm>
 #include <cmath>
 
-using namespace fd::companion;
+using namespace motion_bridge;
 
 namespace {
 
@@ -57,9 +57,9 @@ void RealtimePipeline::stop() { heartbeat_->stop(); device_->emergency_stop(); }
 void RealtimePipeline::set_armed(const bool armed) { device_->set_armed(armed); save_settings(); }
 void RealtimePipeline::emergency_stop() { device_->emergency_stop(); }
 void RealtimePipeline::set_output_mode(const QString& mode) { device_->set_mode(parse_mode(mode)); save_settings(); }
-void RealtimePipeline::set_usb_port(const QString& port) { usb_port_ = port.trimmed(); device_->set_usb_port(usb_port_); auto settings = companion_settings(); settings.setValue("device/usbPort", usb_port_); publish_connection_settings(); }
-void RealtimePipeline::set_wifi_endpoint(const QString& host, const int port) { wifi_host_ = host.trimmed(); wifi_port_ = std::clamp(port, 1, 65535); device_->set_wifi_endpoint(wifi_host_, static_cast<quint16>(wifi_port_)); auto settings = companion_settings(); settings.setValue("device/wifiHost", wifi_host_); settings.setValue("device/wifiPort", wifi_port_); publish_connection_settings(); }
-void RealtimePipeline::set_intiface_url(const QString& url) { intiface_url_ = url.trimmed(); device_->set_intiface_url(QUrl(intiface_url_)); auto settings = companion_settings(); settings.setValue("device/intifaceUrl", intiface_url_); publish_connection_settings(); }
+void RealtimePipeline::set_usb_port(const QString& port) { usb_port_ = port.trimmed(); device_->set_usb_port(usb_port_); auto settings = motion_bridge_settings(); settings.setValue("device/usbPort", usb_port_); publish_connection_settings(); }
+void RealtimePipeline::set_wifi_endpoint(const QString& host, const int port) { wifi_host_ = host.trimmed(); wifi_port_ = std::clamp(port, 1, 65535); device_->set_wifi_endpoint(wifi_host_, static_cast<quint16>(wifi_port_)); auto settings = motion_bridge_settings(); settings.setValue("device/wifiHost", wifi_host_); settings.setValue("device/wifiPort", wifi_port_); publish_connection_settings(); }
+void RealtimePipeline::set_intiface_url(const QString& url) { intiface_url_ = url.trimmed(); device_->set_intiface_url(QUrl(intiface_url_)); auto settings = motion_bridge_settings(); settings.setValue("device/intifaceUrl", intiface_url_); publish_connection_settings(); }
 
 void RealtimePipeline::set_axis_gain(const int axis, const double value) {
     if (axis < 0 || axis >= 6) return;
@@ -69,7 +69,7 @@ void RealtimePipeline::set_axis_gain(const int axis, const double value) {
     if (std::abs(item.gain - next) < 0.0001) return;
     item.gain = next;
     engine_.set_axis_tuning(tuning);
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     settings.setValue(QString("motion/%1/gain").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), item.gain);
     publish_axis_gains();
 }
@@ -85,7 +85,7 @@ void RealtimePipeline::set_axis_range(const int axis, const double minimum, cons
     item.output_min = next_minimum;
     item.output_max = next_maximum;
     engine_.set_axis_tuning(tuning);
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)]);
     settings.setValue(QString("motion/%1/min").arg(axis_name), item.output_min);
     settings.setValue(QString("motion/%1/max").arg(axis_name), item.output_max);
@@ -96,7 +96,7 @@ void RealtimePipeline::set_stream_path(const QString& path) {
     spool_path_ = path;
     input_->set_spool_path(path);
     input_->start();
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     settings.setValue("input/spoolPath", path);
     emit spool_path_changed(path);
 }
@@ -105,7 +105,7 @@ void RealtimePipeline::set_theme(const QString& theme) {
     const auto normalized = theme.compare("light", Qt::CaseInsensitive) == 0 ? QStringLiteral("light") : QStringLiteral("dark");
     if (theme_ == normalized) return;
     theme_ = normalized;
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     settings.setValue("ui/theme", theme_);
     emit theme_changed(theme_);
 }
@@ -140,13 +140,13 @@ void RealtimePipeline::publish_snapshot() {
 }
 
 void RealtimePipeline::save_settings() {
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     settings.setValue("device/mode", mode_name(device_->mode()));
     settings.setValue("device/armed", false);
 }
 
 void RealtimePipeline::load_settings() {
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     theme_ = settings.value("ui/theme", "dark").toString().toLower() == u"light" ? QStringLiteral("light") : QStringLiteral("dark");
     const auto default_path = QDir::homePath() + "/.f8/studio/games/fallen-doll/runtime/fd-skeleton.ndjson";
     spool_path_ = settings.value("input/spoolPath", default_path).toString();

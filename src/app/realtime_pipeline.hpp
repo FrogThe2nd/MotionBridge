@@ -2,7 +2,7 @@
 
 #include "device_router.hpp"
 #include "fallen_doll_input.hpp"
-#include "fd_companion/motion_engine.hpp"
+#include "motion_bridge/motion_engine.hpp"
 
 #include <QElapsedTimer>
 #include <QObject>
@@ -42,7 +42,7 @@ signals:
     void theme_changed(const QString& theme);
 
 private slots:
-    void on_frame(fd::companion::MotionFrame frame);
+    void on_frame(motion_bridge::MotionFrame frame);
     void on_heartbeat();
 
 private:
@@ -54,13 +54,13 @@ private:
     void publish_axis_ranges();
     [[nodiscard]] std::chrono::microseconds now() const;
 
-    fd::companion::MotionEngine engine_;
+    motion_bridge::MotionEngine engine_;
     FallenDollInput* input_{};
     DeviceRouter* device_{};
     QElapsedTimer clock_;
     QTimer* heartbeat_{};
-    fd::companion::EngineSnapshot snapshot_;
-    std::optional<fd::companion::EngineSnapshot> last_ui_snapshot_;
+    motion_bridge::EngineSnapshot snapshot_;
+    std::optional<motion_bridge::EngineSnapshot> last_ui_snapshot_;
     std::chrono::microseconds last_input_time_{};
     QString spool_path_;
     QString usb_port_;

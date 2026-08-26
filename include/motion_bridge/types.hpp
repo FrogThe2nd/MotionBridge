@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace fd::companion {
+namespace motion_bridge {
 
 inline constexpr std::array<const char*, 6> kAxisNames{"L0", "L1", "L2", "R0", "R1", "R2"};
 
@@ -126,4 +126,4 @@ struct EngineSnapshot {
     std::string action_category;
 };
 
-} // namespace fd::companion
+} // namespace motion_bridge

@@ -1,6 +1,6 @@
 #include "device_router.hpp"
 
-#include "fd_companion\tcode.hpp"
+#include "motion_bridge/tcode.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-using namespace fd::companion;
+using namespace motion_bridge;
 
 DeviceRouter::DeviceRouter(QObject* parent) : QObject(parent) {
     serial_ = new QSerialPort(this);

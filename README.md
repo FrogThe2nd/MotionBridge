@@ -9,9 +9,9 @@ Motion Bridge has one real-time worker thread for file watching, motion calculat
 Build the deterministic core and tests without Qt:
 
 ```powershell
-cmake -S companion -B companion/out/core -DMOTION_BRIDGE_BUILD_GUI=OFF
-cmake --build companion/out/core --config Release
-ctest --test-dir companion/out/core -C Release --output-on-failure
+cmake -S . -B out/core -DMOTION_BRIDGE_BUILD_GUI=OFF
+cmake --build out/core --config Release
+ctest --test-dir out/core -C Release --output-on-failure
 ```
 
 For the desktop application, install Qt 6.8+ with Core, Quick, Quick3D, SerialPort, and WebSockets, then configure with `MOTION_BRIDGE_BUILD_GUI=ON`.
@@ -20,13 +20,13 @@ The repository contains two Windows helpers:
 
 ```powershell
 # One-time development toolchain under .toolchain/qt
-.\tools\Install-CompanionToolchain.ps1
+.\tools\Install-MotionBridgeToolchain.ps1
 
 # Deterministic core only (does not require Qt)
-.\tools\Build-Companion.ps1 -CoreOnly
+.\tools\Build-MotionBridge.ps1 -CoreOnly
 
 # Desktop application after Qt installation
-.\tools\Build-Companion.ps1 -QtPrefix D:\path\to\Qt\6.8.3\msvc2022_64
+.\tools\Build-MotionBridge.ps1 -QtPrefix D:\path\to\Qt\6.8.3\msvc2022_64
 ```
 
 The game-side UE4SS Mod remains the source of compact functional-bone frames. This project consumes its `fd-skeleton.ndjson` output directly, so F8Studio does not need to be running. File watching is backed by a 50 Hz incremental read to remain reliable while Unreal replaces or keeps the stream file open.
@@ -38,7 +38,7 @@ The chosen stream file also accepts the public `motion-frame/v1` NDJSON format i
 After installing the isolated Qt/MinGW toolchain, create a tested portable directory and ZIP:
 
 ```powershell
-.\tools\Build-Companion.ps1 -Portable
+.\tools\Build-MotionBridge.ps1 -Portable
 ```
 
 It uses `windeployqt` to copy the Qt runtime beside the executable. The output stays under the ignored `dist/` folder.

@@ -15,14 +15,14 @@
     </message>
 </context>
 <context>
-    <name>CompanionController</name>
+    <name>MotionBridgeController</name>
     <message>
-        <location filename="../src/app/companion_controller.hpp" line="79"/>
+        <location filename="../src/app/motion_bridge_controller.hpp" line="79"/>
         <source>Starting real-time pipeline</source>
         <translation>正在启动实时管线</translation>
     </message>
     <message>
-        <location filename="../src/app/companion_controller.hpp" line="81"/>
+        <location filename="../src/app/motion_bridge_controller.hpp" line="81"/>
         <source>Output disarmed</source>
         <translation>输出未启用</translation>
     </message>

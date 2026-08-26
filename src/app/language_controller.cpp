@@ -1,6 +1,6 @@
 #include "language_controller.hpp"
 
-#include "companion_settings.hpp"
+#include "motion_bridge_settings.hpp"
 
 #include <QGuiApplication>
 #include <QLocale>
@@ -8,7 +8,7 @@
 
 LanguageController::LanguageController(QGuiApplication* application, QObject* parent)
     : QObject(parent), application_(application) {
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     language_ = normalize(settings.value("ui/language", "auto").toString());
     apply();
 }
@@ -29,7 +29,7 @@ void LanguageController::set_language(const QString& language) {
     const auto normalized = normalize(language);
     if (language_ == normalized) return;
     language_ = normalized;
-    auto settings = companion_settings();
+    auto settings = motion_bridge_settings();
     settings.setValue("ui/language", language_);
     settings.sync();
     apply();
@@ -41,7 +41,7 @@ void LanguageController::apply() {
     effective_language_ = language_ == u"auto"
         ? (QLocale::system().language() == QLocale::Chinese ? QStringLiteral("zh_CN") : QStringLiteral("en"))
         : language_;
-    if (effective_language_ == u"zh_CN" && translator_.load(QStringLiteral(":/i18n/companion_zh_CN.qm"))) {
+    if (effective_language_ == u"zh_CN" && translator_.load(QStringLiteral(":/i18n/motion_bridge_zh_CN.qm"))) {
         application_->installTranslator(&translator_);
     }
     if (engine_ != nullptr) engine_->retranslate();

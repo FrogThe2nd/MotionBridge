@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fd_companion/types.hpp"
+#include "motion_bridge/types.hpp"
 
 #include <QObject>
 #include <QSerialPort>
@@ -22,7 +22,7 @@ public:
     void set_armed(bool armed);
     [[nodiscard]] Mode mode() const noexcept;
     [[nodiscard]] bool armed() const noexcept;
-    void send(const fd::companion::Axes& axes);
+    void send(const motion_bridge::Axes& axes);
     void emergency_stop();
 
 signals:
@@ -34,7 +34,7 @@ private slots:
 
 private:
     void ensure_transport();
-    void send_tcode(const fd::companion::Axes& axes);
+    void send_tcode(const motion_bridge::Axes& axes);
     void send_intiface_zero();
 
     Mode mode_{Mode::None};

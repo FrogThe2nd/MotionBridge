@@ -1,10 +1,10 @@
-#include "fd_companion/tcode.hpp"
+#include "motion_bridge/tcode.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 
-namespace fd::companion {
+namespace motion_bridge {
 
 std::string encode_tcode(const Axes& axes, const std::chrono::milliseconds interval) {
     const auto interval_ms = std::max(1LL, interval.count());
@@ -20,4 +20,4 @@ std::string encode_tcode(const Axes& axes, const std::chrono::milliseconds inter
     return result + '\n';
 }
 
-} // namespace fd::companion
+} // namespace motion_bridge

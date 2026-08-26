@@ -8,7 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-using namespace fd::companion;
+using namespace motion_bridge;
 
 namespace {
 

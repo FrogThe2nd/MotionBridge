@@ -23,8 +23,8 @@ F8Studio 仍可作为工程编辑和调试工具，与 Motion Bridge 并行，�
 ## 构建便携版
 
 ```powershell
-.\tools\Install-CompanionToolchain.ps1
-.\tools\Build-Companion.ps1 -Portable
+.\tools\Install-MotionBridgeToolchain.ps1
+.\tools\Build-MotionBridge.ps1 -Portable
 ```
 
 便携目录和 ZIP 会生成在 `dist/`。安装包脚本将在发布阶段以同一个已部署的便携目录生成；当前不把未测试的设备输出作为发行前置条件。

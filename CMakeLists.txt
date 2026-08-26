@@ -9,24 +9,24 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(fd_companion_core
+add_library(motion_bridge_core
     src/core/motion_engine.cpp
     src/core/tcode.cpp
 )
-target_include_directories(fd_companion_core PUBLIC include)
-target_compile_features(fd_companion_core PUBLIC cxx_std_20)
+target_include_directories(motion_bridge_core PUBLIC include)
+target_compile_features(motion_bridge_core PUBLIC cxx_std_20)
 
 if(MSVC)
-    target_compile_options(fd_companion_core PRIVATE /W4 /permissive-)
+    target_compile_options(motion_bridge_core PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(fd_companion_core PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(motion_bridge_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 if(MOTION_BRIDGE_BUILD_TESTS)
     enable_testing()
-    add_executable(fd_companion_core_tests tests/core_tests.cpp)
-    target_link_libraries(fd_companion_core_tests PRIVATE fd_companion_core)
-    add_test(NAME fd_companion_core_tests COMMAND fd_companion_core_tests)
+    add_executable(motion_bridge_core_tests tests/core_tests.cpp)
+    target_link_libraries(motion_bridge_core_tests PRIVATE motion_bridge_core)
+    add_test(NAME motion_bridge_core_tests COMMAND motion_bridge_core_tests)
 endif()
 
 if(MOTION_BRIDGE_BUILD_GUI)
@@ -35,10 +35,10 @@ if(MOTION_BRIDGE_BUILD_GUI)
 
     qt_add_executable(MotionBridge
         src/app/main.cpp
-        src/app/companion_controller.hpp
-        src/app/companion_controller.cpp
-        src/app/companion_settings.hpp
-        src/app/companion_settings.cpp
+        src/app/motion_bridge_controller.hpp
+        src/app/motion_bridge_controller.cpp
+        src/app/motion_bridge_settings.hpp
+        src/app/motion_bridge_settings.cpp
         src/app/language_controller.hpp
         src/app/language_controller.cpp
         src/app/realtime_pipeline.hpp
@@ -103,12 +103,12 @@ if(MOTION_BRIDGE_BUILD_GUI)
     )
     target_include_directories(MotionBridge PRIVATE include)
     target_link_libraries(MotionBridge PRIVATE
-        fd_companion_core Qt6::Core Qt6::Gui Qt6::Network Qt6::Quick Qt6::Quick3D Qt6::SerialPort Qt6::WebSockets
+        motion_bridge_core Qt6::Core Qt6::Gui Qt6::Network Qt6::Quick Qt6::Quick3D Qt6::SerialPort Qt6::WebSockets
     )
     qt_add_translations(
         TARGETS MotionBridge
         IMMEDIATE_CALL
-        TS_FILES translations/companion_zh_CN.ts
+        TS_FILES translations/motion_bridge_zh_CN.ts
         RESOURCE_PREFIX /i18n
         LUPDATE_OPTIONS -no-obsolete
     )

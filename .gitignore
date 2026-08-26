@@ -1,0 +1,20 @@
+# Build and package output
+out/
+dist/
+
+# Local dependencies and toolchains
+.deps/
+.toolchain/
+.tmp/
+
+# Portable/user configuration
+config/
+
+# Editor and language caches
+.vs/
+**/__pycache__/
+.pytest_cache/
+
+# Runtime diagnostics
+*.log
+*.dmp

@@ -1,4 +1,4 @@
-#include "companion_controller.hpp"
+#include "motion_bridge_controller.hpp"
 #include "language_controller.hpp"
 #include "obj_geometry.hpp"
 
@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
         ":/qt/qml/MotionBridge/App/assets/icons/motion-bridge.svg")));
 
     LanguageController language_controller(&app);
-    CompanionController controller;
+    MotionBridgeController controller;
     qmlRegisterType<ObjGeometry>("MotionBridge.Native", 1, 0, "ObjGeometry");
     QQmlApplicationEngine engine;
     language_controller.set_engine(&engine);

@@ -2,4 +2,4 @@
 
 #include <QSettings>
 
-QSettings companion_settings();
+QSettings motion_bridge_settings();

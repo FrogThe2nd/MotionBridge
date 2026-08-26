@@ -1,11 +1,11 @@
 #pragma once
 
-#include "fd_companion/types.hpp"
+#include "motion_bridge/types.hpp"
 
 #include <chrono>
 #include <optional>
 
-namespace fd::companion {
+namespace motion_bridge {
 
 class MotionEngine {
 public:
@@ -37,4 +37,4 @@ private:
 [[nodiscard]] const char* to_string(MotionState state) noexcept;
 [[nodiscard]] double clamp01(double value) noexcept;
 
-} // namespace fd::companion
+} // namespace motion_bridge

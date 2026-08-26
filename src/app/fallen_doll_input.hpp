@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fd_companion/types.hpp"
+#include "motion_bridge/types.hpp"
 
 #include <QFileSystemWatcher>
 #include <QFile>
@@ -18,7 +18,7 @@ public:
     void start();
 
 signals:
-    void frame_ready(fd::companion::MotionFrame frame);
+    void frame_ready(motion_bridge::MotionFrame frame);
     void connection_changed(bool connected, const QString& detail);
 
 private slots:
@@ -46,6 +46,6 @@ private:
     bool connected_{};
     QString connection_detail_;
     qint64 pending_timestamp_{-1};
-    fd::companion::MotionFrame pending_frame_;
+    motion_bridge::MotionFrame pending_frame_;
     quint64 sequence_{};
 };

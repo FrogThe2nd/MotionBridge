@@ -1,11 +1,11 @@
-#include "fd_companion/motion_engine.hpp"
-#include "fd_companion/tcode.hpp"
+#include "motion_bridge/motion_engine.hpp"
+#include "motion_bridge/tcode.hpp"
 
 #include <cassert>
 #include <cmath>
 #include <iostream>
 
-using namespace fd::companion;
+using namespace motion_bridge;
 
 namespace {
 
@@ -87,5 +87,5 @@ int main() {
     test_gain_and_output_range();
     test_hold_and_return();
     test_bilateral_contact_uses_reference_depth();
-    std::cout << "fd_companion_core_tests: OK\n";
+    std::cout << "motion_bridge_core_tests: OK\n";
 }

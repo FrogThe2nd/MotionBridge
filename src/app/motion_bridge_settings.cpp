@@ -1,4 +1,4 @@
-#include "companion_settings.hpp"
+#include "motion_bridge_settings.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -6,7 +6,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 
-QSettings companion_settings() {
+QSettings motion_bridge_settings() {
     const auto local_data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     const auto legacy_directory = QDir(local_data).filePath("FallenDollTCode");
     const auto legacy_path = QDir(legacy_directory).filePath("companion.ini");

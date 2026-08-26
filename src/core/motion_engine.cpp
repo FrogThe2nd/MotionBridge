@@ -1,10 +1,10 @@
-#include "fd_companion/motion_engine.hpp"
+#include "motion_bridge/motion_engine.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
-namespace fd::companion {
+namespace motion_bridge {
 namespace {
 
 constexpr double kEpsilon = 1e-8;
@@ -242,4 +242,4 @@ const char* to_string(const MotionState state) noexcept {
     }
 }
 
-} // namespace fd::companion
+} // namespace motion_bridge
