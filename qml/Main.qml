@@ -35,10 +35,24 @@ ApplicationWindow {
     readonly property color primary: "#667DFF"
     readonly property color cyan: "#61DFFF"
 
+    function keepTitleBarVisible(targetWindow, titleBarHeight) {
+        if (!targetWindow.screen) return
+        const area = targetWindow.screen.availableGeometry
+        if (!area || area.width <= 0 || area.height <= 0) return
+        // Keep enough horizontal title-bar area available for dragging while
+        // allowing most of a wide window to remain on the user's chosen side.
+        const horizontalGrip = Math.min(120, targetWindow.width)
+        const minimumX = area.x - targetWindow.width + horizontalGrip
+        const maximumX = area.x + area.width - horizontalGrip
+        const maximumY = area.y + area.height - titleBarHeight
+        targetWindow.x = Math.max(minimumX, Math.min(targetWindow.x, maximumX))
+        targetWindow.y = Math.max(area.y, Math.min(targetWindow.y, maximumY))
+    }
+
     function resizeForContent() {
         if (visibility === Window.Maximized) return
-        const oldCenterX = x + width / 2
-        const oldCenterY = y + height / 2
+        const titleAnchorX = x
+        const titleAnchorY = y
         const targetWidth = tuningExpanded ? 1160
                           : connectionExpanded ? 960
                           : 860
@@ -56,12 +70,20 @@ ApplicationWindow {
         minimumHeight = expanded ? targetHeight : 186
         width = targetWidth
         height = targetHeight
-        // Preserve the window centre while switching between compact and
-        // expanded modes. QML's QScreen geometry is not consistently exposed
-        // on every Windows/Qt backend, so native dragging remains the final
-        // authority for multi-monitor placement.
-        x = oldCenterX - width / 2
-        y = oldCenterY - height / 2
+        // Keep the custom title bar fixed and grow the workspaces to the right
+        // and downward. Re-centering here can push the only drag surface above
+        // the desktop when the compact window is close to the top edge.
+        x = titleAnchorX
+        y = titleAnchorY
+        keepTitleBarVisible(window, 46)
+        // Some Windows window-manager paths adjust a frameless window again
+        // after its resize event. Restore the title-bar anchor once more after
+        // that event has been delivered.
+        Qt.callLater(function() {
+            window.x = titleAnchorX
+            window.y = titleAnchorY
+            keepTitleBarVisible(window, 46)
+        })
     }
 
     function toggleConnection() {
@@ -75,8 +97,11 @@ ApplicationWindow {
             previewWindow.hide()
         } else {
             previewWindow.show()
-            previewWindow.raise()
-            previewWindow.requestActivate()
+            Qt.callLater(function() {
+                keepTitleBarVisible(previewWindow, 42)
+                previewWindow.raise()
+                previewWindow.requestActivate()
+            })
         }
     }
 
@@ -663,6 +688,7 @@ ApplicationWindow {
                             onClicked: {
                                 previewWindow.alwaysOnTop = checked
                                 Qt.callLater(function() {
+                                    keepTitleBarVisible(previewWindow, 42)
                                     previewWindow.show()
                                     previewWindow.raise()
                                     previewWindow.requestActivate()
