@@ -18,6 +18,8 @@ using namespace motion_bridge;
 
 namespace {
 
+constexpr qint64 kFreshFrameTimeoutMs = 1000;
+
 std::optional<double> number(const QJsonValue& value) {
     return value.isDouble() ? std::optional<double>{value.toDouble()} : std::nullopt;
 }
@@ -137,6 +139,8 @@ void FallenDollInput::set_spool_path(const QString& path) {
     offset_ = 0;
     partial_line_.clear();
     initial_sync_pending_ = true;
+    valid_frame_seen_ = false;
+    valid_frame_timer_.invalidate();
     connection_known_ = false;
     watch_current_path();
 }
@@ -154,7 +158,6 @@ void FallenDollInput::start() {
             offset_ = info.size();
             partial_line_.clear();
             initial_sync_pending_ = false;
-            publish_connection(true, tr("Fallen Doll stream connected"));
         }
     }
     read_appended();
@@ -197,7 +200,20 @@ void FallenDollInput::read_appended() {
         partial_line_.remove(0, newline + 1);
         consume_line(line);
     }
+    publish_freshness();
+}
+
+void FallenDollInput::record_valid_frame() {
+    valid_frame_timer_.restart();
+    valid_frame_seen_ = true;
     publish_connection(true, tr("Fallen Doll stream connected"));
+}
+
+void FallenDollInput::publish_freshness() {
+    const auto fresh = valid_frame_seen_ && valid_frame_timer_.isValid()
+        && valid_frame_timer_.elapsed() <= kFreshFrameTimeoutMs;
+    publish_connection(fresh, fresh ? tr("Fallen Doll stream connected")
+                                   : tr("Waiting for fresh Fallen Doll bone frames"));
 }
 
 void FallenDollInput::publish_connection(const bool connected, const QString& detail) {
@@ -343,6 +359,7 @@ void FallenDollInput::consume_motion_frame(const QJsonObject& packet) {
     }
     if (frame.game_id.empty() || frame.participants.empty()) return;
     if (frame.sequence == 0) frame.sequence = ++sequence_;
+    record_valid_frame();
     emit frame_ready(std::move(frame));
 }
 
@@ -353,6 +370,7 @@ void FallenDollInput::emit_pending_frame() {
     // action/profile semantic once all same-timestamp participants have been
     // coalesced and alias the closest valid contact bone to M_Gen.
     alias_contact_target(pending_frame_, pending_confirmed_target_bones_);
+    record_valid_frame();
     emit frame_ready(std::move(pending_frame_));
     pending_frame_ = {};
     pending_timestamp_ = -1;

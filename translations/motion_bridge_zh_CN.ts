@@ -89,6 +89,10 @@
         <translation>正在等待 Fallen Doll 骨骼数据流</translation>
     </message>
     <message>
+        <source>Waiting for fresh Fallen Doll bone frames</source>
+        <translation>正在等待新的 Fallen Doll 骨骼数据帧</translation>
+    </message>
+    <message>
         <location filename="../src/app/fallen_doll_input.cpp" line="103"/>
         <source>Cannot read bone stream</source>
         <translation>无法读取骨骼数据流</translation>

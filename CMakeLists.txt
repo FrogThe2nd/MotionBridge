@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MotionBridge VERSION 0.1.0 LANGUAGES CXX)
+project(MotionBridge VERSION 0.1.1 LANGUAGES CXX)
 
 option(MOTION_BRIDGE_BUILD_GUI "Build the Qt Quick desktop application" ON)
 option(MOTION_BRIDGE_BUILD_TESTS "Build core regression tests" ON)

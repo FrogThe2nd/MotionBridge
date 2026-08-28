@@ -4,6 +4,7 @@
 
 #include <QFileSystemWatcher>
 #include <QFile>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QTimer>
 
@@ -29,6 +30,8 @@ private:
     void watch_current_path();
     void consume_line(const QByteArray& line);
     void consume_motion_frame(const QJsonObject& packet);
+    void record_valid_frame();
+    void publish_freshness();
     void publish_connection(bool connected, const QString& detail);
 
     QFileSystemWatcher* watcher_{};
@@ -42,6 +45,8 @@ private:
     qint64 offset_{};
     QByteArray partial_line_;
     bool initial_sync_pending_{true};
+    QElapsedTimer valid_frame_timer_;
+    bool valid_frame_seen_{};
     bool connection_known_{};
     bool connected_{};
     QString connection_detail_;
