@@ -32,7 +32,7 @@ public slots:
     void set_theme(const QString& theme);
 
 signals:
-    void snapshot_ready(const QString& state, const QString& action, const QVariantList& raw, const QVariantList& device);
+    void snapshot_ready(const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& device);
     void stream_status_changed(bool connected, const QString& text);
     void output_status_changed(const QString& text, bool armed, const QString& mode);
     void spool_path_changed(const QString& path);
@@ -68,4 +68,5 @@ private:
     int wifi_port_{8000};
     QString intiface_url_{"ws://127.0.0.1:12345"};
     QString theme_{"dark"};
+    QString reference_plane_label_;
 };

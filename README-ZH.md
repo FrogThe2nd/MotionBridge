@@ -6,7 +6,7 @@
 
 - 独立、低延时的 C++20 运动与安全引擎；界面不阻塞实时输出。
 - Fallen Doll Playtest、Demo、0.49 共用的 `fd-skeleton.ndjson` 输入。
-- L0/L1/L2/R0/R1/R2、双手/双脚参考、增益、中心、死区、曲线、范围、反向与失联回中逻辑。
+- L0/L1/L2/R0/R1/R2、双手/双脚参考、增益（围绕所选中心增减输出行程）、中心、死区、曲线、范围、反向与失联回中逻辑。
 - USB 串口、Wi-Fi UDP（默认 `tcode.local:8000`）与 Intiface Desktop；初始状态始终未解锁输出。
 - 外部桌面 SR6/OSR 圆柱预览，VR 游戏运行时同样可在桌面查看。
 - `adapters/motion-frame-v1.schema.json` 是未来游戏的公开输入协议。外部适配器只需向所选 NDJSON 文件逐行写入完整帧，不加载第三方 DLL。

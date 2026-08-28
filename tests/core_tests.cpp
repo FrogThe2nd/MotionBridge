@@ -37,17 +37,22 @@ void test_contact_and_tcode() {
     assert(encode_tcode(snapshot.device_axes, std::chrono::milliseconds{20}) == "L09999I020 L15000I020 L25000I020 R05000I020 R15000I020 R25000I020\n");
 }
 
-void test_gain_and_output_range() {
+void test_gain_scales_output_travel() {
     MotionEngine engine;
     auto tuning = engine.axis_tuning();
-    tuning[0] = {.gain = 2.0, .center = 0.5, .output_min = 0.1, .output_max = 0.9};
+    tuning[0] = {.gain = 2.0};
     engine.set_axis_tuning(tuning);
     auto frame = orthogonal_frame();
-    frame.participants[1].bones["M_Gen"].position.y = 0.194;
+    frame.l0_reference_length = true;
+    // An action may occupy only one side of the global 0..1 L0 coordinate.
+    // Gain must expand its observed travel about that action's neutral point,
+    // not clamp both samples against a fixed 0.5 midpoint.
+    frame.participants[1].bones["M_Gen"].position.y = 0.2;
+    require_close(engine.process(frame).device_axes[0], 0.2);
+    frame.participants[1].bones["M_Gen"].position.y = 0.4;
     const auto snapshot = engine.process(frame);
-    // Raw 0.6 becomes 0.7 after gain, then maps into [0.1, 0.9].
-    require_close(snapshot.raw_axes[0], 0.6);
-    require_close(snapshot.device_axes[0], 0.66);
+    require_close(snapshot.raw_axes[0], 0.4);
+    require_close(snapshot.device_axes[0], 0.5);
 }
 
 void test_hold_and_return() {
@@ -80,12 +85,128 @@ void test_bilateral_contact_uses_reference_depth() {
     require_close(snapshot.raw_axes[5], 0.5);
 }
 
+void test_direct_profile_uses_reference_length_and_axis_mask() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.l0_reference_length = true;
+    frame.active_axes = {true, false, false, false, false, false};
+    frame.participants[0].bones["Penis09"].position.y = 2.0;
+    frame.participants[1].bones["M_Gen"].position.y = 0.5;
+    const auto snapshot = engine.process(frame);
+    require_close(snapshot.raw_axes[0], 0.25);
+    for (std::size_t index = 1; index < 6; ++index) require_close(snapshot.raw_axes[index], 0.5);
+}
+
+void test_direct_profile_can_calibrate_signed_l0_range() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.l0_reference_length = true;
+    frame.direct_l0_min_meters = -0.20;
+    frame.direct_l0_max_meters = 0.80;
+    frame.participants[1].bones["M_Gen"].position.y = 0.30;
+    const auto snapshot = engine.process(frame);
+    require_close(snapshot.raw_axes[0], 0.5);
+}
+
+void test_direct_profile_can_invert_l0_without_flipping_global_setting() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.l0_reference_length = true;
+    frame.direct_l0_min_meters = 0.0;
+    frame.direct_l0_max_meters = 1.0;
+    frame.direct_l0_inverted = true;
+    frame.participants[1].bones["M_Gen"].position.y = 0.25;
+    require_close(engine.process(frame).raw_axes[0], 0.75);
+}
+
+void test_nonhuman_activity_window_uses_observed_axial_travel() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.action_id = "NonhumanLoop";
+    frame.l0_reference_length = true;
+    frame.l0_activity_window = true;
+
+    // The complete reference chain is 1 m in this synthetic frame, but the
+    // action only moves through 60 cm. Its output must follow that activity,
+    // rather than occupying only 60% because of the chain's total length.
+    frame.participants[1].bones["M_Gen"].position.y = 0.2;
+    frame.monotonic_time = std::chrono::milliseconds{0};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].position.y = 0.8;
+    frame.monotonic_time = std::chrono::milliseconds{100};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].position.y = 0.2;
+    frame.monotonic_time = std::chrono::milliseconds{200};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].position.y = 0.8;
+    frame.monotonic_time = std::chrono::milliseconds{300};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].position.y = 0.2;
+    frame.monotonic_time = std::chrono::milliseconds{650};
+    const auto low = engine.process(frame);
+    require_close(low.raw_axes[0], 0.0);
+    frame.participants[1].bones["M_Gen"].position.y = 0.5;
+    frame.monotonic_time = std::chrono::milliseconds{750};
+    const auto middle = engine.process(frame);
+    require_close(middle.raw_axes[0], 0.5);
+}
+
+void test_humanoid_pelvis_plane_overrides_single_support_rotation() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    auto& reference = frame.participants[0];
+    reference.bones.emplace("M_Spine1", pose("M_Spine1", {0, 1, 0}));
+    reference.bones.emplace("L_Thigh", pose("L_Thigh", {-1, 0, 0}));
+    reference.bones.emplace("R_Thigh", pose("R_Thigh", {1, 0, 0}));
+    frame.participants[1].bones["M_Gen"].position = {0.10, 0.5, 0};
+    const auto snapshot = engine.process(frame);
+    // The default support mapping uses -local X. The validated pelvis plane
+    // uses the named left/right landmarks, so positive world X is L2-positive.
+    assert(snapshot.raw_axes[2] > 0.5);
+}
+
+void test_profile_plane_uses_native_nonhuman_landmarks() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    auto& reference = frame.participants[0];
+    reference.bones.emplace("Root_M", pose("Root_M", {0, 0, 0}));
+    reference.bones.emplace("Chest_M", pose("Chest_M", {0, 1, 0}));
+    reference.bones.emplace("Hip_L", pose("Hip_L", {-1, 0, 0}));
+    reference.bones.emplace("Hip_R", pose("Hip_R", {1, 0, 0}));
+    frame.reference_plane = BodyReferencePlane{"quadruped_trunk", "Root_M", "Chest_M", "Hip_L", "Hip_R"};
+    frame.participants[1].bones["M_Gen"].position = {0.10, 0.5, 0};
+    const auto snapshot = engine.process(frame);
+    assert(snapshot.raw_axes[2] > 0.5);
+}
+
+void test_twist_remains_relative_when_reference_crosses_a_turn() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    // The target's local Z axis travels through more than one signed-angle
+    // revolution. R0 must stay the shortest displacement from its activation
+    // baseline, rather than becoming a continuously increasing turn counter.
+    frame.participants[1].bones["M_Gen"].rotation = {1, 0, 0, 0};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].rotation = {-0.1736481776669303, 0, 0.984807753012208, 0};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].rotation = {-0.9396926207859084, 0, -0.3420201433256687, 0};
+    const auto snapshot = engine.process(frame);
+    assert(std::abs(snapshot.contact.twist_degrees) <= 180.0 + 1e-6);
+}
+
 } // namespace
 
 int main() {
     test_contact_and_tcode();
-    test_gain_and_output_range();
+    test_gain_scales_output_travel();
     test_hold_and_return();
     test_bilateral_contact_uses_reference_depth();
+    test_direct_profile_uses_reference_length_and_axis_mask();
+    test_direct_profile_can_calibrate_signed_l0_range();
+    test_direct_profile_can_invert_l0_without_flipping_global_setting();
+    test_nonhuman_activity_window_uses_observed_axial_travel();
+    test_humanoid_pelvis_plane_overrides_single_support_rotation();
+    test_profile_plane_uses_native_nonhuman_landmarks();
+    test_twist_remains_relative_when_reference_crosses_a_turn();
     std::cout << "motion_bridge_core_tests: OK\n";
 }

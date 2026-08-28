@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QStringList>
 #include <QVariantList>
+#include <QVariantMap>
 
 class MotionBridgeController final : public QObject {
     Q_OBJECT
@@ -15,6 +16,7 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QString outputStatus READ output_status NOTIFY statusChanged)
     Q_PROPERTY(QString motionState READ motion_state NOTIFY snapshotChanged)
     Q_PROPERTY(QString actionName READ action_name NOTIFY snapshotChanged)
+    Q_PROPERTY(QString referencePlane READ reference_plane NOTIFY snapshotChanged)
     Q_PROPERTY(QVariantList rawAxes READ raw_axes NOTIFY snapshotChanged)
     Q_PROPERTY(QVariantList deviceAxes READ device_axes NOTIFY snapshotChanged)
     Q_PROPERTY(bool armed READ armed NOTIFY statusChanged)
@@ -39,6 +41,7 @@ public:
     [[nodiscard]] QString output_status() const;
     [[nodiscard]] QString motion_state() const;
     [[nodiscard]] QString action_name() const;
+    [[nodiscard]] QString reference_plane() const;
     [[nodiscard]] QVariantList raw_axes() const;
     [[nodiscard]] QVariantList device_axes() const;
     [[nodiscard]] bool armed() const;
@@ -65,6 +68,7 @@ public:
     Q_INVOKABLE void set_stream_path(const QString& path);
     Q_INVOKABLE void refresh_usb_ports();
     Q_INVOKABLE void set_theme(const QString& theme);
+    Q_INVOKABLE QVariantMap primary_screen_available_geometry() const;
 
 signals:
     void snapshotChanged();
@@ -81,6 +85,7 @@ private:
     QString output_status_{tr("Output disarmed")};
     QString motion_state_{"idle"};
     QString action_name_;
+    QString reference_plane_;
     QVariantList raw_axes_{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
     QVariantList device_axes_{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
     QString output_mode_{"none"};

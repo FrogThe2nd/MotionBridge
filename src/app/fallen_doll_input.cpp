@@ -8,6 +8,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+#include <vector>
+
 using namespace motion_bridge;
 
 namespace {
@@ -30,6 +36,79 @@ std::optional<Quaternion> quaternion(const QJsonValue& value) {
     const auto w = number(values[0]); const auto x = number(values[1]); const auto y = number(values[2]); const auto z = number(values[3]);
     if (!w || !x || !y || !z) return std::nullopt;
     return Quaternion{*w, *x, *y, *z};
+}
+
+double distance_squared(const Vec3 left, const Vec3 right) {
+    const auto x = left.x - right.x;
+    const auto y = left.y - right.y;
+    const auto z = left.z - right.z;
+    return x * x + y * y + z * z;
+}
+
+Vec3 add_scaled(const Vec3 value, const Vec3 direction, const double scale) {
+    return {value.x + direction.x * scale, value.y + direction.y * scale, value.z + direction.z * scale};
+}
+
+Vec3 rotate(const Quaternion value, const Vec3 vector) {
+    const auto magnitude = std::sqrt(value.w * value.w + value.x * value.x + value.y * value.y + value.z * value.z);
+    if (magnitude <= 1e-9) return vector;
+    const auto w = value.w / magnitude;
+    const auto x = value.x / magnitude;
+    const auto y = value.y / magnitude;
+    const auto z = value.z / magnitude;
+    const auto tx = 2.0 * (y * vector.z - z * vector.y);
+    const auto ty = 2.0 * (z * vector.x - x * vector.z);
+    const auto tz = 2.0 * (x * vector.y - y * vector.x);
+    return {
+        vector.x + w * tx + (y * tz - z * ty),
+        vector.y + w * ty + (z * tx - x * tz),
+        vector.z + w * tz + (x * ty - y * tx),
+    };
+}
+
+void alias_contact_target(MotionFrame& frame, const QStringList& confirmed_bones) {
+    // `contactBones` is emitted only by the Lua target contract, which was
+    // resolved from the edition-specific unpacked skeleton catalog. No
+    // game-specific name guessing is allowed in this bridge layer.
+    std::vector<std::string> candidates;
+    for (const auto& value : confirmed_bones) {
+        const auto name = value.toStdString();
+        if (!name.empty() && std::find(candidates.begin(), candidates.end(), name) == candidates.end()) {
+            candidates.push_back(name);
+        }
+    }
+    if (candidates.empty()) return;
+    const Participant* reference = nullptr;
+    const BonePose* origin = nullptr;
+    for (const auto& participant : frame.participants) {
+        const auto found = participant.bones.find("Penis01");
+        if (found != participant.bones.end()) {
+            reference = &participant;
+            origin = &found->second;
+            break;
+        }
+    }
+    if (reference == nullptr || origin == nullptr) return;
+    Participant* selected_owner = nullptr;
+    const BonePose* selected = nullptr;
+    auto best_distance = std::numeric_limits<double>::infinity();
+    for (auto& participant : frame.participants) {
+        if (&participant == reference) continue;
+        for (const auto& name : candidates) {
+            const auto found = participant.bones.find(name);
+            if (found == participant.bones.end()) continue;
+            const auto current = distance_squared(origin->position, found->second.position);
+            if (current < best_distance) {
+                best_distance = current;
+                selected_owner = &participant;
+                selected = &found->second;
+            }
+        }
+    }
+    if (selected_owner == nullptr || selected == nullptr) return;
+    auto alias = *selected;
+    alias.name = "M_Gen";
+    selected_owner->bones.insert_or_assign("M_Gen", std::move(alias));
 }
 
 } // namespace
@@ -140,6 +219,7 @@ void FallenDollInput::consume_line(const QByteArray& line) {
     if (packet.value("type").toString() != u"skeleton_binary") return;
     const auto timestamp = packet.value("timestampMs").toVariant().toLongLong();
     if (timestamp <= 0) return;
+    const auto trailer = packet.value("trailer").toObject();
     if (pending_timestamp_ >= 0 && pending_timestamp_ != timestamp) emit_pending_frame();
     if (pending_timestamp_ < 0) {
         pending_timestamp_ = timestamp;
@@ -148,15 +228,59 @@ void FallenDollInput::consume_line(const QByteArray& line) {
         pending_frame_.schema = "motion-frame/v1";
         pending_frame_.sequence = ++sequence_;
         pending_frame_.monotonic_time = std::chrono::milliseconds{timestamp};
-        const auto trailer = packet.value("trailer").toObject();
         pending_frame_.action_active = trailer.value("hanimeActive").toBool();
         pending_frame_.action_id = trailer.value("hanimeId").toString().toStdString();
         pending_frame_.action_category = trailer.value("hanimeCategory").toString().toStdString();
+        pending_confirmed_target_bones_.clear();
+    }
+    const auto direct_geometry = trailer.value("directGeometry").toObject();
+    const auto plane = direct_geometry.value("referencePlane").toObject();
+    const auto center_bone = plane.value("centerBone").toString();
+    const auto forward_bone = plane.value("forwardBone").toString();
+    const auto left_bone = plane.value("leftBone").toString();
+    const auto right_bone = plane.value("rightBone").toString();
+    if (!center_bone.isEmpty() && !forward_bone.isEmpty() && !left_bone.isEmpty() && !right_bone.isEmpty()) {
+        pending_frame_.reference_plane = motion_bridge::BodyReferencePlane{
+            plane.value("mode").toString().toStdString(),
+            center_bone.toStdString(),
+            forward_bone.toStdString(),
+            left_bone.toStdString(),
+            right_bone.toStdString(),
+        };
+    }
+    const auto target_semantic = direct_geometry.value("targetSemantic").toString();
+    if (!target_semantic.isEmpty()) {
+        pending_frame_.l0_reference_length = true;
+        pending_frame_.l0_activity_window = direct_geometry.value("l0Normalization").toString() == u"activity_window";
+        const auto l0_min = direct_geometry.value("l0MinMeters");
+        const auto l0_max = direct_geometry.value("l0MaxMeters");
+        if (l0_min.isDouble() && l0_max.isDouble() && l0_max.toDouble() > l0_min.toDouble()) {
+            pending_frame_.direct_l0_min_meters = l0_min.toDouble();
+            pending_frame_.direct_l0_max_meters = l0_max.toDouble();
+        }
+        pending_frame_.direct_l0_inverted = direct_geometry.value("l0Inverted").toBool();
+        const auto output_axes = direct_geometry.value("outputAxes").toArray();
+        if (!output_axes.isEmpty()) {
+            pending_frame_.active_axes.fill(false);
+            constexpr std::array<const char*, 6> names{"L0", "L1", "L2", "R0", "R1", "R2"};
+            for (const auto& raw_axis : output_axes) {
+                const auto axis = raw_axis.toString();
+                for (std::size_t index = 0; index < names.size(); ++index) {
+                    if (axis == QString::fromLatin1(names[index])) pending_frame_.active_axes[index] = true;
+                }
+            }
+        }
     }
     Participant participant;
     participant.stable_key = packet.value("stableKey").toString().toStdString();
     participant.skeleton_id = packet.value("modelName").toString().toStdString();
-    participant.role = packet.value("trailer").toObject().value("role").toString().toStdString();
+    participant.role = trailer.value("role").toString().toStdString();
+    for (const auto& raw_bone_name : trailer.value("contactBones").toArray()) {
+        const auto bone_name = raw_bone_name.toString();
+        if (!bone_name.isEmpty() && !pending_confirmed_target_bones_.contains(bone_name)) {
+            pending_confirmed_target_bones_.push_back(bone_name);
+        }
+    }
     for (const auto& raw_bone : packet.value("bones").toArray()) {
         const auto object = raw_bone.toObject();
         const auto position = vec3(object.value("pos"));
@@ -164,6 +288,20 @@ void FallenDollInput::consume_line(const QByteArray& line) {
         const auto name = object.value("name").toString();
         if (name.isEmpty() || !position || !rotation) continue;
         participant.bones.emplace(name.toStdString(), BonePose{name.toStdString(), *position, *rotation});
+    }
+    const auto axis_fallback = direct_geometry.value("axisFallback").toObject();
+    if (axis_fallback.value("mode").toString() == u"origin_local_x_reference_length") {
+        const auto length_meters = axis_fallback.value("lengthCm").toDouble() / 100.0;
+        const auto origin = participant.bones.find("Penis01");
+        if (origin != participant.bones.end() && length_meters > 1e-5) {
+            const auto axis = rotate(origin->second.rotation, {1.0, 0.0, 0.0});
+            auto virtual_pose = origin->second;
+            virtual_pose.position = add_scaled(origin->second.position, axis, length_meters);
+            virtual_pose.name = "Penis02";
+            participant.bones.insert_or_assign("Penis02", virtual_pose);
+            virtual_pose.name = "Penis09";
+            participant.bones.insert_or_assign("Penis09", virtual_pose);
+        }
     }
     if (!participant.bones.empty()) pending_frame_.participants.push_back(std::move(participant));
     if (!coalesce_timer_->isActive()) coalesce_timer_->start();
@@ -184,6 +322,9 @@ void FallenDollInput::consume_motion_frame(const QJsonObject& packet) {
     frame.action_active = action.value("active").toBool();
     frame.action_id = action.value("id").toString().toStdString();
     frame.action_category = action.value("category").toString().toStdString();
+    const auto direct_geometry = packet.value("directGeometry").toObject();
+    frame.direct_l0_inverted = direct_geometry.value("l0Inverted").toBool();
+    frame.l0_activity_window = direct_geometry.value("l0Normalization").toString() == u"activity_window";
     for (const auto& raw_participant : packet.value("participants").toArray()) {
         const auto raw = raw_participant.toObject();
         Participant participant;
@@ -207,7 +348,13 @@ void FallenDollInput::consume_motion_frame(const QJsonObject& packet) {
 
 void FallenDollInput::emit_pending_frame() {
     if (pending_timestamp_ < 0 || pending_frame_.participants.empty()) return;
+    // The UE4SS stream keeps each participant's real bone names.  MotionEngine
+    // deliberately consumes a stable canonical target name, so resolve the
+    // action/profile semantic once all same-timestamp participants have been
+    // coalesced and alias the closest valid contact bone to M_Gen.
+    alias_contact_target(pending_frame_, pending_confirmed_target_bones_);
     emit frame_ready(std::move(pending_frame_));
     pending_frame_ = {};
     pending_timestamp_ = -1;
+    pending_confirmed_target_bones_.clear();
 }

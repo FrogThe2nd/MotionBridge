@@ -11,7 +11,7 @@ Motion Bridge has one real-time worker thread for file watching, motion calculat
 - Real-time L0/L1/L2/R0/R1/R2 processing for OSR2/SR6 workflows.
 - USB serial, Wi-Fi UDP (`tcode.local:8000` by default), and Intiface Desktop output.
 - Separate SR6/OSR 3D viewer with optional always-on-top mode.
-- Per-axis gain and output-range controls, saved beside the executable in portable mode.
+- Per-axis gain (output travel around the selected center) and output-range controls, saved beside the executable in portable mode.
 - Light and dark themes, plus English, Simplified Chinese, and system-language selection.
 - Safe startup, stream-loss hold and smooth return to center. Device output always starts disarmed.
 

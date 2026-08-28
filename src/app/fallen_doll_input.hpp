@@ -47,5 +47,6 @@ private:
     QString connection_detail_;
     qint64 pending_timestamp_{-1};
     motion_bridge::MotionFrame pending_frame_;
+    QStringList pending_confirmed_target_bones_;
     quint64 sequence_{};
 };

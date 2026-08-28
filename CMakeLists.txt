@@ -105,6 +105,9 @@ if(MOTION_BRIDGE_BUILD_GUI)
     target_link_libraries(MotionBridge PRIVATE
         motion_bridge_core Qt6::Core Qt6::Gui Qt6::Network Qt6::Quick Qt6::Quick3D Qt6::SerialPort Qt6::WebSockets
     )
+    if(WIN32)
+        target_link_libraries(MotionBridge PRIVATE Dbghelp)
+    endif()
     qt_add_translations(
         TARGETS MotionBridge
         IMMEDIATE_CALL

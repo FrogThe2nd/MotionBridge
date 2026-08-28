@@ -38,6 +38,16 @@ struct Participant {
     std::unordered_map<std::string, BonePose> bones;
 };
 
+// A game adapter may provide a verified body plane with native bone names.
+// It is independent of any one game or species naming convention.
+struct BodyReferencePlane {
+    std::string mode;
+    std::string center_bone;
+    std::string forward_bone;
+    std::string left_bone;
+    std::string right_bone;
+};
+
 struct MotionFrame {
     std::string schema{"motion-frame/v1"};
     std::string game_id;
@@ -47,6 +57,22 @@ struct MotionFrame {
     std::string action_id;
     std::string action_category;
     std::vector<Participant> participants;
+    // Game adapters may declare that L0 is normalized by the live reference
+    // axis length instead of the generic human 8-27 cm range.
+    bool l0_reference_length{};
+    // Nonhuman rigs can be much longer than the motion visible in a game
+    // animation. In this mode the reference chain supplies direction and
+    // contact only; L0 is normalised from this action's observed axial travel.
+    bool l0_activity_window{};
+    // A calibrated game profile can supply a local signed stroke range. This
+    // takes precedence over the generic or full-reference L0 mapping.
+    std::optional<double> direct_l0_min_meters;
+    std::optional<double> direct_l0_max_meters;
+    bool direct_l0_inverted{};
+    std::array<bool, 6> active_axes{true, true, true, true, true, true};
+    // Optional low-cost body landmarks supplied by the game profile. When
+    // absent, Fallen Doll's original humanoid pelvis names remain supported.
+    std::optional<BodyReferencePlane> reference_plane;
 };
 
 struct Axes {

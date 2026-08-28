@@ -35,6 +35,9 @@ QString mode_name(const DeviceRouter::Mode mode) {
 } // namespace
 
 RealtimePipeline::RealtimePipeline(QObject* parent) : QObject(parent) {
+    // These objects perform all of their work on the realtime thread.  Make
+    // them children of the pipeline before it is moved so that Qt migrates
+    // their timers, sockets and file watcher with the pipeline as one unit.
     input_ = new FallenDollInput(this);
     device_ = new DeviceRouter(this);
     heartbeat_ = new QTimer(this);
@@ -111,6 +114,15 @@ void RealtimePipeline::set_theme(const QString& theme) {
 }
 
 void RealtimePipeline::on_frame(MotionFrame frame) {
+    reference_plane_label_.clear();
+    if (frame.reference_plane) {
+        const auto& plane = *frame.reference_plane;
+        reference_plane_label_ = QString::fromStdString(plane.mode);
+        if (!plane.center_bone.empty()) {
+            reference_plane_label_ += " · " + QString::fromStdString(plane.center_bone) + " / "
+                + QString::fromStdString(plane.left_bone) + " / " + QString::fromStdString(plane.right_bone);
+        }
+    }
     frame.monotonic_time = now();
     last_input_time_ = frame.monotonic_time;
     snapshot_ = engine_.process(frame);
@@ -136,7 +148,7 @@ void RealtimePipeline::publish_snapshot() {
         if (!changed) return;
     }
     last_ui_snapshot_ = snapshot_;
-    emit snapshot_ready(QString::fromLatin1(to_string(snapshot_.state)), QString::fromStdString(snapshot_.action_id), axes_to_variant(snapshot_.raw_axes), axes_to_variant(snapshot_.device_axes));
+    emit snapshot_ready(QString::fromLatin1(to_string(snapshot_.state)), QString::fromStdString(snapshot_.action_id), reference_plane_label_, axes_to_variant(snapshot_.raw_axes), axes_to_variant(snapshot_.device_axes));
 }
 
 void RealtimePipeline::save_settings() {

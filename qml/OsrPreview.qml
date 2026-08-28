@@ -158,7 +158,7 @@ Rectangle {
             backgroundMode: SceneEnvironment.Color
             clearColor: root.backgroundColor
             antialiasingMode: SceneEnvironment.MSAA
-            antialiasingQuality: SceneEnvironment.High
+            antialiasingQuality: SceneEnvironment.Medium
             tonemapMode: SceneEnvironment.TonemapModeAces
         }
 

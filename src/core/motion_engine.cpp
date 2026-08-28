@@ -8,6 +8,8 @@ namespace motion_bridge {
 namespace {
 
 constexpr double kEpsilon = 1e-8;
+constexpr double kActivityDirectionThresholdMeters = 0.00075;
+constexpr double kActivityMinimumStrokeMeters = 0.005;
 
 [[nodiscard]] Vec3 add(const Vec3 left, const Vec3 right) { return {left.x + right.x, left.y + right.y, left.z + right.z}; }
 [[nodiscard]] Vec3 subtract(const Vec3 left, const Vec3 right) { return {left.x - right.x, left.y - right.y, left.z - right.z}; }
@@ -74,6 +76,39 @@ constexpr double kEpsilon = 1e-8;
     const auto found = item->bones.find(name);
     return found == item->bones.end() ? nullptr : &found->second;
 }
+struct PelvisPlane {
+    Vec3 normal;
+    Vec3 tangent;
+};
+[[nodiscard]] std::optional<PelvisPlane> plane_from_landmarks(
+    const Participant* item,
+    const std::string& center_name,
+    const std::string& forward_name,
+    const std::string& left_name,
+    const std::string& right_name) {
+    const auto* center = bone(item, center_name);
+    const auto* forward = bone(item, forward_name);
+    const auto* left = bone(item, left_name);
+    const auto* right = bone(item, right_name);
+    if (!center || !forward || !left || !right) return std::nullopt;
+    const auto lateral = normalize(subtract(right->position, left->position));
+    const auto vertical = normalize(subtract(forward->position, center->position));
+    if (!lateral || !vertical) return std::nullopt;
+    const auto normal = normalize(cross(*lateral, *vertical));
+    if (!normal) return std::nullopt;
+    const auto tangent = normalize(project_on_plane(*lateral, *normal));
+    if (!tangent) return std::nullopt;
+    return PelvisPlane{*normal, *tangent};
+}
+[[nodiscard]] std::optional<PelvisPlane> reference_plane(const MotionFrame& frame, const Participant* item) {
+    if (frame.reference_plane) {
+        const auto& plane = *frame.reference_plane;
+        if (const auto custom = plane_from_landmarks(item, plane.center_bone, plane.forward_bone, plane.left_bone, plane.right_bone)) {
+            return custom;
+        }
+    }
+    return plane_from_landmarks(item, "M_Hips", "M_Spine1", "L_Thigh", "R_Thigh");
+}
 [[nodiscard]] double shape(const double value, const MotionCurve curve) {
     switch (curve) {
     case MotionCurve::Smoothstep: return value * value * (3.0 - 2.0 * value);
@@ -81,7 +116,7 @@ constexpr double kEpsilon = 1e-8;
     default: return value;
     }
 }
-[[nodiscard]] double tune_value(double value, const AxisTuning& tuning) {
+[[nodiscard]] double tune_value(double value, const AxisTuning& tuning, const double gain_center) {
     value = clamp01(value);
     const auto center = std::clamp(tuning.center, 0.0, 1.0);
     const auto gain = std::clamp(tuning.gain, 0.25, 4.0);
@@ -90,18 +125,31 @@ constexpr double kEpsilon = 1e-8;
     const auto span = positive ? std::max(1.0 - center, kEpsilon) : std::max(center, kEpsilon);
     auto progress = positive ? (value - center) / span : (center - value) / span;
     progress = std::max(0.0, (progress - dead_zone) / std::max(1.0 - dead_zone, kEpsilon));
-    progress = std::min(1.0, progress * gain);
     const auto shaped = shape(progress, tuning.curve);
     const auto normalized_value = positive ? center + span * shaped : center - span * shaped;
     const auto lower = std::clamp(std::min(tuning.output_min, tuning.output_max), 0.0, 1.0);
     const auto upper = std::clamp(std::max(tuning.output_min, tuning.output_max), 0.0, 1.0);
-    auto output = lower + normalized_value * (upper - lower);
+    // The geometric signal is already normalised by the game adapter.  Gain
+    // must therefore enlarge the *observed motion* around its own neutral
+    // value, not around a fixed 0.5.  A fixed midpoint clipped short L0
+    // strokes that happened to live entirely in one half of the range.
+    const auto center_output = lower + std::clamp(gain_center, 0.0, 1.0) * (upper - lower);
+    const auto unscaled_output = lower + normalized_value * (upper - lower);
+    // Gain changes the device's excursion around its selected center.  Apply
+    // it after dead-zone and curve shaping so it controls travel, not input
+    // sensitivity or the shape of the response curve.
+    auto output = center_output + (unscaled_output - center_output) * gain;
+    output = std::clamp(output, lower, upper);
     if (tuning.inverted) output = lower + upper - output;
     return tuning.enabled ? clamp01(output) : 0.5;
 }
 
-[[nodiscard]] double unwrap_near(const double wrapped, const double previous) {
-    return wrapped + 360.0 * std::round((previous - wrapped) / 360.0);
+[[nodiscard]] double shortest_angle_delta(const double current, const double baseline) {
+    // R0 is a relative actuator, not an accumulated turn counter.  A moving
+    // reference axis can cross the signed-angle seam during ordinary motion;
+    // retain the equivalent turn closest to the baseline so that seam
+    // crossings cannot make a toy spin through multiple revolutions.
+    return std::remainder(current - baseline, 360.0);
 }
 
 } // namespace
@@ -113,8 +161,12 @@ void MotionEngine::set_contact_config(ContactConfig contact) {
     contact_ = std::move(contact);
     last_valid_.reset();
     angle_binding_key_.clear();
-    continuous_angles_ = {};
     twist_baseline_.reset();
+    gain_binding_key_.clear();
+    gain_envelope_valid_.fill(false);
+    l0_activity_binding_key_.clear();
+    l0_activity_has_sample_ = false;
+    l0_activity_ready_at_.reset();
 }
 void MotionEngine::set_axis_tuning(std::array<AxisTuning, 6> tuning) { tuning_ = std::move(tuning); }
 const ContactConfig& MotionEngine::contact_config() const noexcept { return contact_; }
@@ -133,7 +185,13 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     const auto axis = normalize(subtract(direction->position, origin->position));
     const auto length = magnitude(subtract(tip->position, origin->position));
     if (!axis || length <= kEpsilon) return std::nullopt;
-    auto reference_right = normalize(project_on_plane(local_axis(support->rotation, contact_.support_right_axis), *axis));
+    const auto body_plane = reference_plane(frame, reference);
+    auto reference_right = body_plane
+        ? normalize(project_on_plane(body_plane->tangent, *axis))
+        : std::optional<Vec3>{};
+    if (!reference_right) {
+        reference_right = normalize(project_on_plane(local_axis(support->rotation, contact_.support_right_axis), *axis));
+    }
     if (!reference_right) reference_right = normalize(project_on_plane(local_axis(support->rotation, contact_.support_up_axis), *axis));
     if (!reference_right) return std::nullopt;
     const auto reference_forward = normalize(cross(*reference_right, *axis));
@@ -163,37 +221,100 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     const auto binding_key = reference->stable_key + "|" + target_owner->stable_key + "|" + frame.action_id + "|"
         + contact_.target_bone + "|" + contact_.target_secondary_bone + "|" + contact_.target_up_axis + "|" + contact_.target_right_axis;
     const auto binding_changed = binding_key != angle_binding_key_;
-    const std::array<double, 3> wrapped{wrapped_twist, wrapped_roll, wrapped_pitch};
-    std::array<double, 3> continuous{};
-    for (std::size_t index = 0; index < wrapped.size(); ++index) {
-        continuous[index] = !binding_changed && continuous_angles_[index]
-            ? unwrap_near(wrapped[index], *continuous_angles_[index])
-            : wrapped[index];
-        continuous_angles_[index] = continuous[index];
-    }
-    if (binding_changed || !twist_baseline_) twist_baseline_ = continuous[0];
+    if (binding_changed || !twist_baseline_) twist_baseline_ = wrapped_twist;
     angle_binding_key_ = binding_key;
-    const auto twist = continuous[0] - *twist_baseline_;
-    const auto roll = continuous[1];
-    const auto pitch = continuous[2];
+    const auto twist = shortest_angle_delta(wrapped_twist, *twist_baseline_);
+    const auto roll = wrapped_roll;
+    const auto pitch = wrapped_pitch;
 
     Axes raw;
-    raw[0] = bilateral ? range01(axial, 0.0, length) : range01(axial, contact_.l0_min_meters, contact_.l0_max_meters);
-    if (contact_.invert_l0) raw[0] = 1.0 - raw[0];
-    raw[1] = symmetric01(dot(radial, *reference_forward), contact_.lateral_range_meters);
-    raw[2] = symmetric01(dot(radial, *reference_right), contact_.lateral_range_meters);
+    const auto absolute_l0 = frame.direct_l0_min_meters && frame.direct_l0_max_meters
+        ? range01(axial, *frame.direct_l0_min_meters, *frame.direct_l0_max_meters)
+        : (bilateral || frame.l0_reference_length)
+            ? range01(axial, 0.0, length)
+            : range01(axial, contact_.l0_min_meters, contact_.l0_max_meters);
+    raw[0] = absolute_l0;
+    if (frame.l0_activity_window) {
+        // Nonhuman appendages can be far longer than the part which actually
+        // moves in a loop.  Learn the loop's real axial travel instead of
+        // treating the full mesh chain as a toy stroke range.
+        if (l0_activity_binding_key_ != binding_key) {
+            l0_activity_binding_key_ = binding_key;
+            l0_activity_min_ = axial;
+            l0_activity_max_ = axial;
+            l0_activity_last_ = axial;
+            l0_activity_direction_ = 0;
+            l0_activity_reversals_ = 0;
+            l0_activity_has_sample_ = true;
+            l0_activity_ready_at_.reset();
+        } else if (l0_activity_has_sample_) {
+            l0_activity_min_ = std::min(l0_activity_min_, axial);
+            l0_activity_max_ = std::max(l0_activity_max_, axial);
+            const auto delta = axial - l0_activity_last_;
+            const auto direction = delta > kActivityDirectionThresholdMeters ? 1
+                : delta < -kActivityDirectionThresholdMeters ? -1 : 0;
+            if (direction != 0) {
+                if (l0_activity_direction_ != 0 && direction != l0_activity_direction_) {
+                    ++l0_activity_reversals_;
+                }
+                l0_activity_direction_ = direction;
+            }
+            l0_activity_last_ = axial;
+            if (!l0_activity_ready_at_
+                && l0_activity_reversals_ >= 2
+                && l0_activity_max_ - l0_activity_min_ >= kActivityMinimumStrokeMeters) {
+                l0_activity_ready_at_ = frame.monotonic_time;
+            }
+        }
+        if (l0_activity_ready_at_) {
+            const auto learned_l0 = range01(axial, l0_activity_min_, l0_activity_max_);
+            // One short blend keeps the source's initial absolute reading from
+            // becoming a hard jump when a complete in-game cycle is known.
+            const auto elapsed = frame.monotonic_time - *l0_activity_ready_at_;
+            const auto blend = std::clamp(static_cast<double>(elapsed.count()) / 300000.0, 0.0, 1.0);
+            raw[0] = absolute_l0 + (learned_l0 - absolute_l0) * blend;
+        }
+    }
+    // Per-action calibration describes the game skeleton's local direction;
+    // the global control remains a user override, so two inversions cancel.
+    if (contact_.invert_l0 != frame.direct_l0_inverted) raw[0] = 1.0 - raw[0];
+    const auto plane_delta = body_plane ? project_on_plane(delta, body_plane->normal) : radial;
+    raw[1] = symmetric01(dot(plane_delta, *reference_forward), contact_.lateral_range_meters);
+    raw[2] = symmetric01(dot(plane_delta, *reference_right), contact_.lateral_range_meters);
     raw[3] = symmetric01(twist, contact_.twist_range_degrees);
     raw[4] = symmetric01(roll, contact_.tilt_range_degrees);
     raw[5] = symmetric01(pitch, contact_.tilt_range_degrees);
-    return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw),
+    for (std::size_t index = 0; index < raw.values.size(); ++index) {
+        if (!frame.active_axes[index]) raw[index] = 0.5;
+    }
+    return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw, frame.active_axes, binding_key),
         {true, contact_valid, contact_valid ? "ok" : "outside_contact_radius", length, radius, axial, radial_distance, twist, roll, pitch,
             bilateral ? "bilateral_reference_axis" : "single_bone"},
         frame.action_id, frame.action_category};
 }
 
-Axes MotionEngine::tune(const Axes& raw) const {
+Axes MotionEngine::tune(const Axes& raw, const std::array<bool, 6>& active_axes, const std::string& binding_key) {
+    if (gain_binding_key_ != binding_key) {
+        gain_binding_key_ = binding_key;
+        gain_envelope_valid_.fill(false);
+    }
     Axes result;
-    for (std::size_t index = 0; index < result.values.size(); ++index) result[index] = tune_value(raw[index], tuning_[index]);
+    for (std::size_t index = 0; index < result.values.size(); ++index) {
+        if (active_axes[index]) {
+            if (!gain_envelope_valid_[index]) {
+                gain_min_[index] = raw[index];
+                gain_max_[index] = raw[index];
+                gain_envelope_valid_[index] = true;
+            } else {
+                gain_min_[index] = std::min(gain_min_[index], raw[index]);
+                gain_max_[index] = std::max(gain_max_[index], raw[index]);
+            }
+        }
+        const auto gain_center = gain_envelope_valid_[index]
+            ? (gain_min_[index] + gain_max_[index]) * 0.5
+            : tuning_[index].center;
+        result[index] = tune_value(raw[index], tuning_[index], gain_center);
+    }
     return result;
 }
 

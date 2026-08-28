@@ -1,6 +1,8 @@
 #include "motion_bridge_controller.hpp"
 
+#include <QGuiApplication>
 #include <QMetaObject>
+#include <QScreen>
 #include <QSerialPortInfo>
 
 #include <algorithm>
@@ -8,8 +10,8 @@
 MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent), pipeline_(new RealtimePipeline) {
     pipeline_->moveToThread(&realtime_thread_);
     connect(&realtime_thread_, &QThread::finished, pipeline_, &QObject::deleteLater);
-    connect(pipeline_, &RealtimePipeline::snapshot_ready, this, [this](const QString& state, const QString& action, const QVariantList& raw, const QVariantList& device) {
-        motion_state_ = state; action_name_ = action; raw_axes_ = raw; device_axes_ = device; emit snapshotChanged();
+    connect(pipeline_, &RealtimePipeline::snapshot_ready, this, [this](const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& device) {
+        motion_state_ = state; action_name_ = action; reference_plane_ = reference_plane; raw_axes_ = raw; device_axes_ = device; emit snapshotChanged();
     });
     connect(pipeline_, &RealtimePipeline::stream_status_changed, this, [this](const bool connected, const QString& status) {
         stream_connected_ = connected; stream_status_ = status; emit statusChanged();
@@ -49,6 +51,7 @@ bool MotionBridgeController::stream_connected() const { return stream_connected_
 QString MotionBridgeController::output_status() const { return output_status_; }
 QString MotionBridgeController::motion_state() const { return motion_state_; }
 QString MotionBridgeController::action_name() const { return action_name_; }
+QString MotionBridgeController::reference_plane() const { return reference_plane_; }
 QVariantList MotionBridgeController::raw_axes() const { return raw_axes_; }
 QVariantList MotionBridgeController::device_axes() const { return device_axes_; }
 bool MotionBridgeController::armed() const { return armed_; }
@@ -73,6 +76,12 @@ void MotionBridgeController::set_intiface_url(const QString& url) { QMetaObject:
 void MotionBridgeController::set_axis_gain(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_gain", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
 void MotionBridgeController::set_axis_range(const int axis, const double minimum, const double maximum) { QMetaObject::invokeMethod(pipeline_, "set_axis_range", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, minimum), Q_ARG(double, maximum)); }
 void MotionBridgeController::set_stream_path(const QString& path) { QMetaObject::invokeMethod(pipeline_, "set_stream_path", Qt::QueuedConnection, Q_ARG(QString, path)); }
+
+QVariantMap MotionBridgeController::primary_screen_available_geometry() const {
+    const auto* screen = QGuiApplication::primaryScreen();
+    const auto area = screen ? screen->availableGeometry() : QRect{};
+    return {{"x", area.x()}, {"y", area.y()}, {"width", area.width()}, {"height", area.height()}};
+}
 
 void MotionBridgeController::refresh_usb_ports() {
     QStringList ports;

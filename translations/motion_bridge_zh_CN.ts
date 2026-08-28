@@ -287,6 +287,16 @@
         <translation>Wi-Fi 主机</translation>
     </message>
     <message>
+        <location filename="../qml/Main.qml" line="636"/>
+        <source>WI-FI PORT</source>
+        <translation>WI-FI 端口</translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="639"/>
+        <source>Wi-Fi port</source>
+        <translation>Wi-Fi 端口</translation>
+    </message>
+    <message>
         <location filename="../qml/Main.qml" line="572"/>
         <source>INTIFACE URL</source>
         <translation>INTIFACE 地址</translation>

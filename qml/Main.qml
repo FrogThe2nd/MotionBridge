@@ -60,8 +60,8 @@ ApplicationWindow {
         // implicitHeight here can capture an intermediate value immediately
         // after visibility changes and leave the panel clipped. Keep explicit
         // complete heights in sync with the layouts below.
-        const targetHeight = connectionExpanded && tuningExpanded ? 890
-                           : connectionExpanded ? 490
+        const targetHeight = connectionExpanded && tuningExpanded ? 940
+                           : connectionExpanded ? 540
                            : tuningExpanded ? 620
                            : 190
         minimumWidth = tuningExpanded ? 980
@@ -96,13 +96,60 @@ ApplicationWindow {
         if (previewWindow.visible) {
             previewWindow.hide()
         } else {
+            placePreviewWindow()
             previewWindow.show()
             Qt.callLater(function() {
-                keepTitleBarVisible(previewWindow, 42)
+                keepPreviewWindowOnScreen()
                 previewWindow.raise()
                 previewWindow.requestActivate()
             })
         }
+    }
+
+    function previewAvailableArea() {
+        // The preview has a fixed home: the primary display's usable area.
+        // Its placement deliberately does not depend on the main window's
+        // position or on the monitor where that window happens to be placed.
+        const area = companion.primary_screen_available_geometry()
+        if (area && area.width > 0 && area.height > 0) return area
+        return previewWindow.screen ? previewWindow.screen.availableGeometry : null
+    }
+
+    function keepPreviewWindowOnScreen() {
+        const area = previewAvailableArea()
+        if (!area || area.width <= 0 || area.height <= 0) return
+        fitPreviewToAvailableArea(area)
+        const edgePadding = 16
+        const minimumX = area.x + edgePadding
+        const minimumY = area.y + edgePadding
+        const maximumX = Math.max(minimumX, area.x + area.width - previewWindow.width - edgePadding)
+        const maximumY = Math.max(minimumY, area.y + area.height - previewWindow.height - edgePadding)
+        previewWindow.x = Math.max(minimumX, Math.min(previewWindow.x, maximumX))
+        previewWindow.y = Math.max(minimumY, Math.min(previewWindow.y, maximumY))
+    }
+
+    function fitPreviewToAvailableArea(area) {
+        const edgePadding = 16
+        const maximumWidth = Math.max(previewWindow.minimumWidth, area.width - edgePadding * 2)
+        const maximumHeight = Math.max(previewWindow.minimumHeight, area.height - edgePadding * 2)
+        // On a scaled or short display, the original 500 px preview can be
+        // taller than the usable desktop. Reduce it before centering so the
+        // entire frameless window, including its drag bar, remains visible.
+        if (previewWindow.width > maximumWidth)
+            previewWindow.width = maximumWidth
+        if (previewWindow.height > maximumHeight)
+            previewWindow.height = maximumHeight
+    }
+
+    function placePreviewWindow() {
+        const area = previewAvailableArea()
+        if (!area) return
+        // A predictable centered placement is easier to find than following
+        // a main window that may be parked at any desktop edge or corner.
+        fitPreviewToAvailableArea(area)
+        previewWindow.x = area.x + Math.round((area.width - previewWindow.width) / 2)
+        previewWindow.y = area.y + Math.round((area.height - previewWindow.height) / 2)
+        keepPreviewWindowOnScreen()
     }
 
     function toggleTuning() {
@@ -112,13 +159,22 @@ ApplicationWindow {
 
     function motionStateLabel(state) {
         switch (state) {
-        case "active": return qsTr("ACTIVE")
+        // A short source-frame gap enters the engine's safety hold state,
+        // while the last valid motion remains in effect. Keep the UI's live
+        // indication stable instead of flashing between ACTIVE and IDLE.
+        case "active":
+        case "holding": return qsTr("ACTIVE")
+        case "returning": return qsTr("RELEASING")
         case "acquiring": return qsTr("ACQUIRING")
         case "releasing": return qsTr("RELEASING")
         case "unmapped": return qsTr("UNMAPPED")
         case "fault": return qsTr("FAULT")
         default: return qsTr("IDLE")
         }
+    }
+
+    function motionIsLive(state) {
+        return state === "active" || state === "holding"
     }
 
     component WindowButton: Button {
@@ -483,13 +539,18 @@ ApplicationWindow {
                     ColumnLayout {
                         Layout.preferredWidth: 208; spacing: 2
                         Label { text: qsTr("Live control"); color: window.textPrimary; font.pixelSize: 18; font.bold: true }
-                        Label { text: companion.actionName.length ? companion.actionName : "Operation Lovecraft: Fallen Doll"; color: window.textMuted; elide: Text.ElideRight; Layout.fillWidth: true; font.pixelSize: 10 }
+                        Label {
+                            text: companion.actionName.length
+                                ? companion.actionName + (companion.referencePlane.length ? "  ·  " + companion.referencePlane : "")
+                                : "Operation Lovecraft: Fallen Doll"
+                            color: window.textMuted; elide: Text.ElideRight; Layout.fillWidth: true; font.pixelSize: 10
+                        }
                     }
                     RowLayout {
                         Layout.fillWidth: true; spacing: 9
                         Item { Layout.fillWidth: true }
                         StatusChip { caption: qsTr("STREAM"); value: companion.streamConnected ? qsTr("ONLINE") : qsTr("WAITING"); accent: companion.streamConnected ? "#58D9FA" : "#F1B865" }
-                        StatusChip { caption: qsTr("MOTION"); value: window.motionStateLabel(companion.motionState); accent: companion.motionState === "active" ? "#56E3B1" : "#7E8CA2" }
+                        StatusChip { caption: qsTr("MOTION"); value: window.motionStateLabel(companion.motionState); accent: window.motionIsLive(companion.motionState) ? "#56E3B1" : "#7E8CA2" }
                         StatusChip { caption: qsTr("DEVICE"); value: companion.armed ? qsTr("ARMED") : companion.outputMode === "none" ? qsTr("OFF") : companion.outputMode.toUpperCase(); accent: companion.armed ? "#56E3B1" : "#F1B865" }
                     }
                     Button {
@@ -533,7 +594,7 @@ ApplicationWindow {
                     RowLayout {
                         visible: window.connectionExpanded
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 250
+                        Layout.preferredHeight: 300
                         spacing: 14
                         Rectangle {
                             visible: window.connectionExpanded
@@ -590,6 +651,24 @@ ApplicationWindow {
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true; spacing: 4
+                                        Label { text: qsTr("WI-FI PORT"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
+                                        DarkField {
+                                            text: companion.wifiPort
+                                            placeholderText: qsTr("Wi-Fi port")
+                                            inputMethodHints: Qt.ImhDigitsOnly
+                                            onEditingFinished: {
+                                                const value = text.trim()
+                                                const port = Number(value)
+                                                if (/^\d+$/.test(value) && port >= 1 && port <= 65535) {
+                                                    companion.set_wifi_endpoint(companion.wifiHost, Math.floor(port))
+                                                } else {
+                                                    text = companion.wifiPort.toString()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 4
                                         Label { text: qsTr("INTIFACE URL"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
                                         DarkField { text: companion.intifaceUrl; placeholderText: qsTr("Intiface Desktop URL"); onEditingFinished: companion.set_intiface_url(text) }
                                     }
@@ -637,15 +716,64 @@ ApplicationWindow {
         id: previewWindow
         width: 520
         height: 500
-        minimumWidth: 420
-        minimumHeight: 390
+        minimumWidth: 340
+        minimumHeight: 240
         visible: false
         title: qsTr("3D preview")
         color: "transparent"
         property bool alwaysOnTop: false
+        // The device path stays at 50 Hz, but rendering a static desktop
+        // preview above a VR game does not need to consume the GPU at that
+        // rate. Keep it continuously live at 30 FPS instead.
+        property real previewL0: 0.5
+        property real previewL1: 0.5
+        property real previewL2: 0.5
+        property real previewR0: 0.5
+        property real previewR1: 0.5
+        property real previewR2: 0.5
         flags: alwaysOnTop
                ? (Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
                : (Qt.Window | Qt.FramelessWindowHint)
+
+        function refreshPreviewAxes() {
+            previewL0 = companion.deviceAxes[0]
+            previewL1 = companion.deviceAxes[1]
+            previewL2 = companion.deviceAxes[2]
+            previewR0 = companion.deviceAxes[3]
+            previewR1 = companion.deviceAxes[4]
+            previewR2 = companion.deviceAxes[5]
+        }
+
+        onVisibleChanged: {
+            if (!visible) return
+            refreshPreviewAxes()
+            // Windows can apply its final placement after show() returns.
+            // Re-center once that placement has settled so the custom title
+            // bar is never left outside the usable desktop.
+            initialPlacementTimer.restart()
+        }
+        onWidthChanged: if (visible) keepPreviewWindowOnScreen()
+        onHeightChanged: if (visible) keepPreviewWindowOnScreen()
+        onScreenChanged: if (visible) keepPreviewWindowOnScreen()
+
+        Timer {
+            id: initialPlacementTimer
+            interval: 180
+            repeat: false
+            onTriggered: {
+                if (!previewWindow.visible) return
+                placePreviewWindow()
+                previewWindow.raise()
+                previewWindow.requestActivate()
+            }
+        }
+
+        Timer {
+            interval: 33
+            repeat: true
+            running: previewWindow.visible
+            onTriggered: previewWindow.refreshPreviewAxes()
+        }
 
         Rectangle {
             anchors.fill: parent
@@ -688,7 +816,7 @@ ApplicationWindow {
                             onClicked: {
                                 previewWindow.alwaysOnTop = checked
                                 Qt.callLater(function() {
-                                    keepTitleBarVisible(previewWindow, 42)
+                                    keepPreviewWindowOnScreen()
                                     previewWindow.show()
                                     previewWindow.raise()
                                     previewWindow.requestActivate()
@@ -728,8 +856,8 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     Layout.margins: 10
                     darkTheme: window.darkTheme
-                    l0: companion.deviceAxes[0]; l1: companion.deviceAxes[1]; l2: companion.deviceAxes[2]
-                    r0: companion.deviceAxes[3]; r1: companion.deviceAxes[4]; r2: companion.deviceAxes[5]
+                    l0: previewWindow.previewL0; l1: previewWindow.previewL1; l2: previewWindow.previewL2
+                    r0: previewWindow.previewR0; r1: previewWindow.previewR1; r2: previewWindow.previewR2
                 }
             }
         }
