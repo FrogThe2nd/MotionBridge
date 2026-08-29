@@ -35,6 +35,9 @@ struct Participant {
     std::string stable_key;
     std::string role;
     std::string skeleton_id;
+    // Human-readable identity supplied by the game adapter. `stable_key`
+    // remains the internal selection key because it is unique and durable.
+    std::string display_name;
     std::unordered_map<std::string, BonePose> bones;
 };
 

@@ -260,7 +260,8 @@ void RealtimePipeline::publish_participant_choices(const MotionFrame& frame) {
     for (const auto& participant : frame.participants) {
         const auto key = QString::fromStdString(participant.stable_key);
         if (key.isEmpty()) continue;
-        if (participant.bones.contains(contact.origin_bone)) changed = cache_reference_participant(key) || changed;
+        const auto label = QString::fromStdString(participant.display_name);
+        if (participant.bones.contains(contact.origin_bone)) changed = cache_reference_participant(key, label) || changed;
     }
     if (changed) emit reference_participants_changed(reference_participants_);
 }
