@@ -19,7 +19,7 @@ DeviceRouter::DeviceRouter(QObject* parent) : QObject(parent) {
     connect(intiface_, &QWebSocket::errorOccurred, this, &DeviceRouter::on_intiface_error);
     connect(intiface_, &QWebSocket::connected, this, [this] {
         const auto request = QJsonObject{{"RequestServerInfo", QJsonObject{
-            {"Id", intiface_request_id_++}, {"ClientName", "Motion Bridge"}, {"MessageVersion", 4}
+            {"Id", intiface_request_id_++}, {"ClientName", "Motion Bridge"}, {"MessageVersion", 3}
         }}};
         intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{request}).toJson(QJsonDocument::Compact)));
     });

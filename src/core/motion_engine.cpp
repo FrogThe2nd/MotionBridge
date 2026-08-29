@@ -162,6 +162,8 @@ void MotionEngine::set_contact_config(ContactConfig contact) {
     last_valid_.reset();
     angle_binding_key_.clear();
     twist_baseline_.reset();
+    roll_baseline_.reset();
+    pitch_baseline_.reset();
     gain_binding_key_.clear();
     gain_envelope_valid_.fill(false);
     l0_activity_binding_key_.clear();
@@ -221,11 +223,19 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     const auto binding_key = reference->stable_key + "|" + target_owner->stable_key + "|" + frame.action_id + "|"
         + contact_.target_bone + "|" + contact_.target_secondary_bone + "|" + contact_.target_up_axis + "|" + contact_.target_right_axis;
     const auto binding_changed = binding_key != angle_binding_key_;
-    if (binding_changed || !twist_baseline_) twist_baseline_ = wrapped_twist;
+    if (binding_changed || !twist_baseline_ || !roll_baseline_ || !pitch_baseline_) {
+        twist_baseline_ = wrapped_twist;
+        roll_baseline_ = wrapped_roll;
+        pitch_baseline_ = wrapped_pitch;
+    }
     angle_binding_key_ = binding_key;
     const auto twist = shortest_angle_delta(wrapped_twist, *twist_baseline_);
-    const auto roll = wrapped_roll;
-    const auto pitch = wrapped_pitch;
+    // Signed angles are periodic. A physically continuous tilt can cross the
+    // -180/+180 representation seam, which previously changed R1/R2 by almost
+    // a full revolution in one frame. Like twist, express both tilts as the
+    // shortest displacement from this binding's activation orientation.
+    const auto roll = shortest_angle_delta(wrapped_roll, *roll_baseline_);
+    const auto pitch = shortest_angle_delta(wrapped_pitch, *pitch_baseline_);
 
     Axes raw;
     const auto absolute_l0 = frame.direct_l0_min_meters && frame.direct_l0_max_meters

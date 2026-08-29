@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <numbers>
 
 using namespace motion_bridge;
 
@@ -195,6 +196,23 @@ void test_twist_remains_relative_when_reference_crosses_a_turn() {
     assert(std::abs(snapshot.contact.twist_degrees) <= 180.0 + 1e-6);
 }
 
+void test_pitch_crosses_signed_angle_seam_without_output_jump() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    const auto one_degree = std::numbers::pi / 180.0;
+    // Rotating the target basis by +/-1 degree around local X places its up
+    // vector on opposite numeric sides of the signed-angle 180-degree seam.
+    // The physical change is only two degrees, so R2 must remain continuous.
+    frame.participants[1].bones["M_Gen"].rotation = {
+        std::cos(one_degree * 0.5), std::sin(one_degree * 0.5), 0, 0};
+    (void)engine.process(frame);
+    frame.participants[1].bones["M_Gen"].rotation = {
+        std::cos(one_degree * 0.5), -std::sin(one_degree * 0.5), 0, 0};
+    const auto snapshot = engine.process(frame);
+    assert(std::abs(snapshot.contact.pitch_degrees) < 3.0);
+    assert(std::abs(snapshot.raw_axes[5] - 0.5) < 0.06);
+}
+
 void test_functional_target_priority_stays_locked_during_an_action() {
     FunctionalTargetSelector selector;
     auto frame = orthogonal_frame();
@@ -249,6 +267,7 @@ int main() {
     test_humanoid_pelvis_plane_overrides_single_support_rotation();
     test_profile_plane_uses_native_nonhuman_landmarks();
     test_twist_remains_relative_when_reference_crosses_a_turn();
+    test_pitch_crosses_signed_angle_seam_without_output_jump();
     test_functional_target_priority_stays_locked_during_an_action();
     test_functional_target_releases_only_after_missing_grace();
     std::cout << "motion_bridge_core_tests: OK\n";

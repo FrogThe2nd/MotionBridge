@@ -31,6 +31,8 @@ private:
     std::chrono::microseconds last_valid_time_{};
     std::string angle_binding_key_;
     std::optional<double> twist_baseline_;
+    std::optional<double> roll_baseline_;
+    std::optional<double> pitch_baseline_;
     // Gain expands an animation about its observed neutral position, rather
     // than the arbitrary global 0.5.  The envelope is reset only when the
     // reference/target/action binding changes, so it cannot drift while a
