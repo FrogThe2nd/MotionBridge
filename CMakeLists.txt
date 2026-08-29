@@ -51,6 +51,22 @@ if(MOTION_BRIDGE_BUILD_GUI)
         src/app/fallen_doll_input.hpp
         src/app/device_router.cpp
     )
+    if(WIN32)
+        # Generate the Windows version resource from the project version so
+        # Explorer's file/product version always follows a release bump.
+        set(MOTION_BRIDGE_WINDOWS_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/motion-bridge.rc")
+        set(MOTION_BRIDGE_WINDOWS_ICON "${CMAKE_CURRENT_BINARY_DIR}/motion-bridge.ico")
+        configure_file(
+            assets/icons/motion-bridge.rc
+            "${MOTION_BRIDGE_WINDOWS_RESOURCE}"
+            @ONLY
+        )
+        configure_file(
+            assets/icons/motion-bridge.ico
+            "${MOTION_BRIDGE_WINDOWS_ICON}"
+            COPYONLY
+        )
+    endif()
     if(WIN32 AND MINGW)
         # CMake's default MinGW RC rule passes the absolute source path to
         # windres. windres then loses the quotes while invoking its
@@ -58,19 +74,16 @@ if(MOTION_BRIDGE_BUILD_GUI)
         # the icon directory with a relative input name so portable checkout
         # paths remain supported.
         set(MOTION_BRIDGE_ICON_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/motion-bridge-icon.o")
-        file(RELATIVE_PATH MOTION_BRIDGE_ICON_OBJECT_RELATIVE
-             "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
-             "${MOTION_BRIDGE_ICON_OBJECT}")
         add_custom_command(
             OUTPUT "${MOTION_BRIDGE_ICON_OBJECT}"
             COMMAND "${CMAKE_RC_COMPILER}"
                     -i motion-bridge.rc
-                    -o "${MOTION_BRIDGE_ICON_OBJECT_RELATIVE}"
+                    -o motion-bridge-icon.o
                     -O coff
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             DEPENDS
-                assets/icons/motion-bridge.rc
-                assets/icons/motion-bridge.ico
+                "${MOTION_BRIDGE_WINDOWS_RESOURCE}"
+                "${MOTION_BRIDGE_WINDOWS_ICON}"
             VERBATIM
         )
         set_source_files_properties(
@@ -79,7 +92,7 @@ if(MOTION_BRIDGE_BUILD_GUI)
         )
         target_sources(MotionBridge PRIVATE "${MOTION_BRIDGE_ICON_OBJECT}")
     elseif(WIN32)
-        target_sources(MotionBridge PRIVATE assets/icons/motion-bridge.rc)
+        target_sources(MotionBridge PRIVATE "${MOTION_BRIDGE_WINDOWS_RESOURCE}")
     endif()
     qt_add_qml_module(MotionBridge
         URI MotionBridge.App
