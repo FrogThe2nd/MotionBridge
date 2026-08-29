@@ -262,7 +262,7 @@ void FallenDollInput::consume_line(const QByteArray& line) {
     participant.stable_key = packet.value("stableKey").toString().toStdString();
     participant.skeleton_id = packet.value("modelName").toString().toStdString();
     participant.role = trailer.value("role").toString().toStdString();
-    participant.display_name = trailer.value("participantTag").toString().toStdString();
+    participant.participant_tag = trailer.value("participantTag").toString().toStdString();
     for (const auto& raw_bone_name : trailer.value("contactBones").toArray()) {
         const auto bone_name = raw_bone_name.toString();
         if (!bone_name.isEmpty() && !pending_confirmed_target_bones_.contains(bone_name)) {
@@ -331,7 +331,7 @@ void FallenDollInput::consume_motion_frame(const QJsonObject& packet) {
         participant.stable_key = raw.value("stableKey").toString().toStdString();
         participant.role = raw.value("role").toString().toStdString();
         participant.skeleton_id = raw.value("skeletonId").toString().toStdString();
-        participant.display_name = raw.value("participantTag").toString(raw.value("displayName").toString()).toStdString();
+        participant.participant_tag = raw.value("participantTag").toString().toStdString();
         for (const auto& raw_bone : raw.value("bones").toArray()) {
             const auto bone = raw_bone.toObject();
             const auto name = bone.value("name").toString();

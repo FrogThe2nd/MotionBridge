@@ -176,7 +176,7 @@ const std::array<AxisTuning, 6>& MotionEngine::axis_tuning() const noexcept { re
 
 std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) {
     const auto* reference = participant(frame, contact_.reference_participant, contact_.origin_bone);
-    const auto* target_owner = participant(frame, contact_.target_participant, contact_.target_bone);
+    const auto* target_owner = participant(frame, {}, contact_.target_bone);
     const auto* origin = bone(reference, contact_.origin_bone);
     const auto* direction = bone(reference, contact_.direction_bone);
     const auto* tip = bone(reference, contact_.tip_bone);

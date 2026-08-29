@@ -127,7 +127,6 @@ void RealtimePipeline::set_reference_participant(const QString& reference) {
     input_->set_reference_participant(reference);
     auto settings = motion_bridge_settings();
     settings.setValue("contact/referenceParticipant", reference.trimmed());
-    if (cache_reference_participant(reference.trimmed())) emit reference_participants_changed(reference_participants_);
     publish_reference_participant();
 }
 
@@ -202,10 +201,8 @@ void RealtimePipeline::load_settings() {
     contact.tilt_range_degrees = contact_number("tiltRangeDegrees", contact.tilt_range_degrees); contact.radius_scale = contact_number("radiusScale", contact.radius_scale);
     contact.invert_l0 = settings.value("contact/invertL0", contact.invert_l0).toBool(); contact.require_contact = settings.value("contact/requireContact", contact.require_contact).toBool();
     contact.reference_participant = contact_text("referenceParticipant", contact.reference_participant);
-    contact.target_participant.clear();
     engine_.set_contact_config(contact);
     input_->set_reference_participant(QString::fromStdString(contact.reference_participant));
-    settings.remove("contact/targetParticipant");
     reset_participant_cache();
     auto tuning = engine_.axis_tuning();
     for (int index = 0; index < 6; ++index) {
@@ -260,7 +257,7 @@ void RealtimePipeline::publish_participant_choices(const MotionFrame& frame) {
     for (const auto& participant : frame.participants) {
         const auto key = QString::fromStdString(participant.stable_key);
         if (key.isEmpty()) continue;
-        const auto label = QString::fromStdString(participant.display_name);
+        const auto label = QString::fromStdString(participant.participant_tag);
         if (participant.bones.contains(contact.origin_bone)) changed = cache_reference_participant(key, label) || changed;
     }
     if (changed) emit reference_participants_changed(reference_participants_);

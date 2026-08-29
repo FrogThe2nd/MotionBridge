@@ -58,7 +58,7 @@ private:
     void publish_participant_choices(const motion_bridge::MotionFrame& frame);
     void publish_reference_participant();
     void reset_participant_cache();
-    [[nodiscard]] bool cache_reference_participant(const QString& key, const QString& label = {});
+    [[nodiscard]] bool cache_reference_participant(const QString& key, const QString& label);
     [[nodiscard]] std::chrono::microseconds now() const;
 
     motion_bridge::MotionEngine engine_;
