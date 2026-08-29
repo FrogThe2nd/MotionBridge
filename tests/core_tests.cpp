@@ -1,3 +1,4 @@
+#include "motion_bridge/functional_target_selector.hpp"
 #include "motion_bridge/motion_engine.hpp"
 #include "motion_bridge/tcode.hpp"
 
@@ -194,6 +195,46 @@ void test_twist_remains_relative_when_reference_crosses_a_turn() {
     assert(std::abs(snapshot.contact.twist_degrees) <= 180.0 + 1e-6);
 }
 
+void test_functional_target_priority_stays_locked_during_an_action() {
+    FunctionalTargetSelector selector;
+    auto frame = orthogonal_frame();
+    frame.action_id = "HandAction";
+    auto& target = frame.participants[1];
+    target.bones.erase("M_Gen");
+    target.bones.emplace("R_Hand", pose("R_Hand", {0.2, 0.6, 0}));
+    target.bones.emplace("L_Hand", pose("L_Hand", {0.0, 0.4, 0}));
+
+    assert(selector.alias_target(frame, {"R_Hand", "L_Hand"}));
+    require_close(frame.participants[1].bones.at("M_Gen").position.x, 0.2);
+    assert(selector.selected_bone() == "R_Hand");
+
+    // Even when the other hand becomes much closer, the selected functional
+    // target must remain stable until the action or explicit priority changes.
+    frame.participants[1].bones["R_Hand"].position = {1.0, 1.0, 0};
+    frame.participants[1].bones["L_Hand"].position = {0.0, 0.1, 0};
+    assert(selector.alias_target(frame, {"R_Hand", "L_Hand"}));
+    require_close(frame.participants[1].bones.at("M_Gen").position.x, 1.0);
+    assert(selector.selected_bone() == "R_Hand");
+}
+
+void test_functional_target_releases_only_after_missing_grace() {
+    FunctionalTargetSelector selector{2};
+    auto frame = orthogonal_frame();
+    frame.action_id = "HandAction";
+    auto& target = frame.participants[1];
+    target.bones.erase("M_Gen");
+    target.bones.emplace("R_Hand", pose("R_Hand", {0.2, 0.6, 0}));
+    target.bones.emplace("L_Hand", pose("L_Hand", {0.0, 0.4, 0}));
+    assert(selector.alias_target(frame, {"R_Hand", "L_Hand"}));
+
+    target.bones.erase("R_Hand");
+    target.bones.erase("M_Gen");
+    assert(!selector.alias_target(frame, {"R_Hand", "L_Hand"}));
+    assert(!selector.alias_target(frame, {"R_Hand", "L_Hand"}));
+    assert(selector.alias_target(frame, {"R_Hand", "L_Hand"}));
+    assert(selector.selected_bone() == "L_Hand");
+}
+
 } // namespace
 
 int main() {
@@ -208,5 +249,7 @@ int main() {
     test_humanoid_pelvis_plane_overrides_single_support_rotation();
     test_profile_plane_uses_native_nonhuman_landmarks();
     test_twist_remains_relative_when_reference_crosses_a_turn();
+    test_functional_target_priority_stays_locked_during_an_action();
+    test_functional_target_releases_only_after_missing_grace();
     std::cout << "motion_bridge_core_tests: OK\n";
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "motion_bridge/functional_target_selector.hpp"
 #include "motion_bridge/types.hpp"
 
 #include <QFileSystemWatcher>
@@ -53,5 +54,6 @@ private:
     qint64 pending_timestamp_{-1};
     motion_bridge::MotionFrame pending_frame_;
     QStringList pending_confirmed_target_bones_;
+    motion_bridge::FunctionalTargetSelector target_selector_;
     quint64 sequence_{};
 };

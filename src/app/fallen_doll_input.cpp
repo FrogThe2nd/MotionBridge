@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <vector>
 
 using namespace motion_bridge;
@@ -40,13 +39,6 @@ std::optional<Quaternion> quaternion(const QJsonValue& value) {
     return Quaternion{*w, *x, *y, *z};
 }
 
-double distance_squared(const Vec3 left, const Vec3 right) {
-    const auto x = left.x - right.x;
-    const auto y = left.y - right.y;
-    const auto z = left.z - right.z;
-    return x * x + y * y + z * z;
-}
-
 Vec3 add_scaled(const Vec3 value, const Vec3 direction, const double scale) {
     return {value.x + direction.x * scale, value.y + direction.y * scale, value.z + direction.z * scale};
 }
@@ -68,7 +60,7 @@ Vec3 rotate(const Quaternion value, const Vec3 vector) {
     };
 }
 
-void alias_contact_target(MotionFrame& frame, const QStringList& confirmed_bones) {
+std::vector<std::string> contact_target_candidates(const QStringList& confirmed_bones) {
     // `contactBones` is emitted only by the Lua target contract, which was
     // resolved from the edition-specific unpacked skeleton catalog. No
     // game-specific name guessing is allowed in this bridge layer.
@@ -79,38 +71,7 @@ void alias_contact_target(MotionFrame& frame, const QStringList& confirmed_bones
             candidates.push_back(name);
         }
     }
-    if (candidates.empty()) return;
-    const Participant* reference = nullptr;
-    const BonePose* origin = nullptr;
-    for (const auto& participant : frame.participants) {
-        const auto found = participant.bones.find("Penis01");
-        if (found != participant.bones.end()) {
-            reference = &participant;
-            origin = &found->second;
-            break;
-        }
-    }
-    if (reference == nullptr || origin == nullptr) return;
-    Participant* selected_owner = nullptr;
-    const BonePose* selected = nullptr;
-    auto best_distance = std::numeric_limits<double>::infinity();
-    for (auto& participant : frame.participants) {
-        if (&participant == reference) continue;
-        for (const auto& name : candidates) {
-            const auto found = participant.bones.find(name);
-            if (found == participant.bones.end()) continue;
-            const auto current = distance_squared(origin->position, found->second.position);
-            if (current < best_distance) {
-                best_distance = current;
-                selected_owner = &participant;
-                selected = &found->second;
-            }
-        }
-    }
-    if (selected_owner == nullptr || selected == nullptr) return;
-    auto alias = *selected;
-    alias.name = "M_Gen";
-    selected_owner->bones.insert_or_assign("M_Gen", std::move(alias));
+    return candidates;
 }
 
 } // namespace
@@ -138,6 +99,7 @@ void FallenDollInput::set_spool_path(const QString& path) {
     stream_file_->setFileName(spool_path_);
     offset_ = 0;
     partial_line_.clear();
+    target_selector_.reset();
     initial_sync_pending_ = true;
     valid_frame_seen_ = false;
     valid_frame_timer_.invalidate();
@@ -368,8 +330,10 @@ void FallenDollInput::emit_pending_frame() {
     // The UE4SS stream keeps each participant's real bone names.  MotionEngine
     // deliberately consumes a stable canonical target name, so resolve the
     // action/profile semantic once all same-timestamp participants have been
-    // coalesced and alias the closest valid contact bone to M_Gen.
-    alias_contact_target(pending_frame_, pending_confirmed_target_bones_);
+    // coalesced and alias the highest-priority stable contact bone to M_Gen.
+    (void)target_selector_.alias_target(
+        pending_frame_,
+        contact_target_candidates(pending_confirmed_target_bones_));
     record_valid_frame();
     emit frame_ready(std::move(pending_frame_));
     pending_frame_ = {};
