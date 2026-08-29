@@ -9,6 +9,10 @@
 #include <QObject>
 #include <QTimer>
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 class FallenDollInput final : public QObject {
     Q_OBJECT
 
@@ -16,6 +20,7 @@ public:
     explicit FallenDollInput(QObject* parent = nullptr);
 
     void set_spool_path(const QString& path);
+    void set_reference_participant(const QString& reference);
     [[nodiscard]] QString spool_path() const;
     void start();
 
@@ -54,6 +59,9 @@ private:
     qint64 pending_timestamp_{-1};
     motion_bridge::MotionFrame pending_frame_;
     QStringList pending_confirmed_target_bones_;
+    std::unordered_map<std::string, std::string> pending_participant_slots_;
+    std::unordered_map<std::string, std::vector<std::string>> pending_target_bones_by_slot_;
     motion_bridge::FunctionalTargetSelector target_selector_;
+    std::string preferred_reference_participant_;
     quint64 sequence_{};
 };

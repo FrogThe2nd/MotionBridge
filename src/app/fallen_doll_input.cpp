@@ -165,6 +165,13 @@ void FallenDollInput::read_appended() {
     publish_freshness();
 }
 
+void FallenDollInput::set_reference_participant(const QString& reference) {
+    const auto next_reference = reference.trimmed().toStdString();
+    if (preferred_reference_participant_ == next_reference) return;
+    preferred_reference_participant_ = next_reference;
+    target_selector_.reset();
+}
+
 void FallenDollInput::record_valid_frame() {
     valid_frame_timer_.restart();
     valid_frame_seen_ = true;
@@ -210,6 +217,8 @@ void FallenDollInput::consume_line(const QByteArray& line) {
         pending_frame_.action_id = trailer.value("hanimeId").toString().toStdString();
         pending_frame_.action_category = trailer.value("hanimeCategory").toString().toStdString();
         pending_confirmed_target_bones_.clear();
+        pending_participant_slots_.clear();
+        pending_target_bones_by_slot_.clear();
     }
     const auto direct_geometry = trailer.value("directGeometry").toObject();
     const auto plane = direct_geometry.value("referencePlane").toObject();
@@ -259,6 +268,14 @@ void FallenDollInput::consume_line(const QByteArray& line) {
             pending_confirmed_target_bones_.push_back(bone_name);
         }
     }
+    for (const auto& raw_pair : trailer.value("contactPairs").toArray()) {
+        const auto pair = raw_pair.toObject();
+        const auto reference_slot = pair.value("reference").toObject().value("participantSlot").toString().trimmed().toStdString();
+        const auto target_bone = pair.value("target").toObject().value("bone").toString().trimmed().toStdString();
+        if (reference_slot.empty() || target_bone.empty()) continue;
+        auto& bones = pending_target_bones_by_slot_[reference_slot];
+        if (std::find(bones.begin(), bones.end(), target_bone) == bones.end()) bones.push_back(target_bone);
+    }
     for (const auto& raw_bone : packet.value("bones").toArray()) {
         const auto object = raw_bone.toObject();
         const auto position = vec3(object.value("pos"));
@@ -266,6 +283,10 @@ void FallenDollInput::consume_line(const QByteArray& line) {
         const auto name = object.value("name").toString();
         if (name.isEmpty() || !position || !rotation) continue;
         participant.bones.emplace(name.toStdString(), BonePose{name.toStdString(), *position, *rotation});
+    }
+    const auto participant_slot = trailer.value("participantSlot").toString().trimmed().toStdString();
+    if (!participant.stable_key.empty() && !participant_slot.empty()) {
+        pending_participant_slots_.insert_or_assign(participant.stable_key, participant_slot);
     }
     const auto axis_fallback = direct_geometry.value("axisFallback").toObject();
     if (axis_fallback.value("mode").toString() == u"origin_local_x_reference_length") {
@@ -331,12 +352,25 @@ void FallenDollInput::emit_pending_frame() {
     // deliberately consumes a stable canonical target name, so resolve the
     // action/profile semantic once all same-timestamp participants have been
     // coalesced and alias the highest-priority stable contact bone to M_Gen.
+    std::unordered_map<std::string, std::vector<std::string>> candidate_bones_by_reference;
+    for (const auto& [participant_key, participant_slot] : pending_participant_slots_) {
+        const auto target_bones = pending_target_bones_by_slot_.find(participant_slot);
+        if (target_bones != pending_target_bones_by_slot_.end() && !target_bones->second.empty()) {
+            candidate_bones_by_reference.emplace(participant_key, target_bones->second);
+        }
+    }
     (void)target_selector_.alias_target(
         pending_frame_,
-        contact_target_candidates(pending_confirmed_target_bones_));
+        contact_target_candidates(pending_confirmed_target_bones_),
+        "Penis01",
+        "M_Gen",
+        preferred_reference_participant_,
+        candidate_bones_by_reference);
     record_valid_frame();
     emit frame_ready(std::move(pending_frame_));
     pending_frame_ = {};
     pending_timestamp_ = -1;
     pending_confirmed_target_bones_.clear();
+    pending_participant_slots_.clear();
+    pending_target_bones_by_slot_.clear();
 }

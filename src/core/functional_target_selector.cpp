@@ -34,7 +34,9 @@ bool FunctionalTargetSelector::alias_target(
     MotionFrame& frame,
     const std::vector<std::string>& candidate_bones,
     const std::string& reference_origin_bone,
-    const std::string& alias_bone) {
+    const std::string& alias_bone,
+    const std::string& preferred_reference_participant,
+    const std::unordered_map<std::string, std::vector<std::string>>& candidate_bones_by_reference) {
     if (!frame.action_active || frame.action_id.empty() || candidate_bones.empty()) {
         reset();
         return false;
@@ -47,6 +49,7 @@ bool FunctionalTargetSelector::alias_target(
     Participant* reference = nullptr;
     const BonePose* origin = nullptr;
     for (auto& participant : frame.participants) {
+        if (!preferred_reference_participant.empty() && participant.stable_key != preferred_reference_participant) continue;
         if (const auto* candidate = find_bone(participant, reference_origin_bone)) {
             reference = &participant;
             origin = candidate;
@@ -55,8 +58,14 @@ bool FunctionalTargetSelector::alias_target(
     }
     if (reference == nullptr || origin == nullptr) return false;
 
-    const auto selected_is_still_allowed = std::find(candidate_bones.begin(), candidate_bones.end(), bone_name_)
-        != candidate_bones.end();
+    const auto exact_candidates = candidate_bones_by_reference.find(reference->stable_key);
+    const auto& active_candidates = exact_candidates != candidate_bones_by_reference.end()
+        && !exact_candidates->second.empty()
+        ? exact_candidates->second
+        : candidate_bones;
+
+    const auto selected_is_still_allowed = std::find(active_candidates.begin(), active_candidates.end(), bone_name_)
+        != active_candidates.end();
     if (!participant_key_.empty() && !bone_name_.empty() && selected_is_still_allowed) {
         for (auto& participant : frame.participants) {
             if (participant.stable_key != participant_key_) continue;
@@ -79,7 +88,7 @@ bool FunctionalTargetSelector::alias_target(
     // The game adapter sends functional bones in user-visible priority order
     // (for example R_Hand before L_Hand). Honour that order. Distance only
     // resolves the same functional bone across multiple participants.
-    for (const auto& candidate_name : candidate_bones) {
+    for (const auto& candidate_name : active_candidates) {
         Participant* selected_owner = nullptr;
         const BonePose* selected = nullptr;
         auto best_distance = std::numeric_limits<double>::infinity();

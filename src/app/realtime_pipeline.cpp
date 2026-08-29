@@ -99,6 +99,8 @@ void RealtimePipeline::set_stream_path(const QString& path) {
     spool_path_ = path;
     input_->set_spool_path(path);
     input_->start();
+    reset_participant_cache();
+    emit reference_participants_changed(reference_participants_);
     auto settings = motion_bridge_settings();
     settings.setValue("input/spoolPath", path);
     emit spool_path_changed(path);
@@ -113,6 +115,22 @@ void RealtimePipeline::set_theme(const QString& theme) {
     emit theme_changed(theme_);
 }
 
+void RealtimePipeline::set_reference_participant(const QString& reference) {
+    auto contact = engine_.contact_config();
+    const auto next_reference = reference.trimmed().toStdString();
+    if (contact.reference_participant == next_reference) return;
+    // Changing the source actor switches all six axes. Stop output first, then
+    // require an explicit arm after a fresh frame confirms the new route.
+    device_->emergency_stop();
+    contact.reference_participant = next_reference;
+    engine_.set_contact_config(contact);
+    input_->set_reference_participant(reference);
+    auto settings = motion_bridge_settings();
+    settings.setValue("contact/referenceParticipant", reference.trimmed());
+    if (cache_reference_participant(reference.trimmed())) emit reference_participants_changed(reference_participants_);
+    publish_reference_participant();
+}
+
 void RealtimePipeline::on_frame(MotionFrame frame) {
     reference_plane_label_.clear();
     if (frame.reference_plane) {
@@ -123,6 +141,7 @@ void RealtimePipeline::on_frame(MotionFrame frame) {
                 + QString::fromStdString(plane.left_bone) + " / " + QString::fromStdString(plane.right_bone);
         }
     }
+    publish_participant_choices(frame);
     frame.monotonic_time = now();
     last_input_time_ = frame.monotonic_time;
     snapshot_ = engine_.process(frame);
@@ -182,7 +201,12 @@ void RealtimePipeline::load_settings() {
     contact.lateral_range_meters = contact_number("lateralRangeMeters", contact.lateral_range_meters); contact.twist_range_degrees = contact_number("twistRangeDegrees", contact.twist_range_degrees);
     contact.tilt_range_degrees = contact_number("tiltRangeDegrees", contact.tilt_range_degrees); contact.radius_scale = contact_number("radiusScale", contact.radius_scale);
     contact.invert_l0 = settings.value("contact/invertL0", contact.invert_l0).toBool(); contact.require_contact = settings.value("contact/requireContact", contact.require_contact).toBool();
+    contact.reference_participant = contact_text("referenceParticipant", contact.reference_participant);
+    contact.target_participant.clear();
     engine_.set_contact_config(contact);
+    input_->set_reference_participant(QString::fromStdString(contact.reference_participant));
+    settings.remove("contact/targetParticipant");
+    reset_participant_cache();
     auto tuning = engine_.axis_tuning();
     for (int index = 0; index < 6; ++index) {
         auto& item = tuning[static_cast<std::size_t>(index)]; const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(index)]);
@@ -198,6 +222,8 @@ void RealtimePipeline::load_settings() {
     publish_connection_settings();
     publish_axis_gains();
     publish_axis_ranges();
+    publish_reference_participant();
+    emit reference_participants_changed(reference_participants_);
     emit theme_changed(theme_);
     emit spool_path_changed(spool_path_);
 }
@@ -220,6 +246,49 @@ void RealtimePipeline::publish_axis_ranges() {
         maximums.push_back(item.output_max);
     }
     emit axis_ranges_changed(minimums, maximums);
+}
+
+void RealtimePipeline::publish_participant_choices(const MotionFrame& frame) {
+    const auto contact = engine_.contact_config();
+    auto changed = false;
+    const auto action_id = QString::fromStdString(frame.action_id);
+    if (action_id != participant_cache_action_id_) {
+        reset_participant_cache();
+        participant_cache_action_id_ = action_id;
+        changed = true;
+    }
+    for (const auto& participant : frame.participants) {
+        const auto key = QString::fromStdString(participant.stable_key);
+        if (key.isEmpty()) continue;
+        if (participant.bones.contains(contact.origin_bone)) changed = cache_reference_participant(key) || changed;
+    }
+    if (changed) emit reference_participants_changed(reference_participants_);
+}
+
+void RealtimePipeline::publish_reference_participant() {
+    const auto contact = engine_.contact_config();
+    emit reference_participant_changed(QString::fromStdString(contact.reference_participant));
+}
+
+void RealtimePipeline::reset_participant_cache() {
+    participant_cache_action_id_.clear();
+    reference_participants_ = {QVariantMap{{"key", ""}, {"label", tr("Automatic")}}};
+}
+
+bool RealtimePipeline::cache_reference_participant(const QString& key, const QString& label) {
+    const auto normalized_key = key.trimmed();
+    if (normalized_key.isEmpty()) return false;
+    const auto normalized_label = label.isEmpty() ? normalized_key : label;
+    for (auto& value : reference_participants_) {
+        auto option = value.toMap();
+        if (option.value("key").toString() != normalized_key) continue;
+        if (option.value("label").toString() == normalized_label) return false;
+        option.insert("label", normalized_label);
+        value = option;
+        return true;
+    }
+    reference_participants_.push_back(QVariantMap{{"key", normalized_key}, {"label", normalized_label}});
+    return true;
 }
 
 std::chrono::microseconds RealtimePipeline::now() const { return std::chrono::microseconds{clock_.nsecsElapsed() / 1000}; }

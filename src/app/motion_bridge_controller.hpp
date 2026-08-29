@@ -29,6 +29,8 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QVariantList axisGains READ axis_gains NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMinimums READ axis_minimums NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMaximums READ axis_maximums NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantList referenceParticipants READ reference_participants NOTIFY participantChoicesChanged)
+    Q_PROPERTY(QString referenceParticipant READ reference_participant NOTIFY settingsChanged)
     Q_PROPERTY(QStringList usbPorts READ usb_ports NOTIFY usbPortsChanged)
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
 
@@ -54,6 +56,8 @@ public:
     [[nodiscard]] QVariantList axis_gains() const;
     [[nodiscard]] QVariantList axis_minimums() const;
     [[nodiscard]] QVariantList axis_maximums() const;
+    [[nodiscard]] QVariantList reference_participants() const;
+    [[nodiscard]] QString reference_participant() const;
     [[nodiscard]] QStringList usb_ports() const;
     [[nodiscard]] QString theme() const;
 
@@ -68,6 +72,7 @@ public:
     Q_INVOKABLE void set_stream_path(const QString& path);
     Q_INVOKABLE void refresh_usb_ports();
     Q_INVOKABLE void set_theme(const QString& theme);
+    Q_INVOKABLE void set_reference_participant(const QString& reference);
     Q_INVOKABLE QVariantMap primary_screen_available_geometry() const;
 
 signals:
@@ -76,6 +81,7 @@ signals:
     void settingsChanged();
     void usbPortsChanged();
     void themeChanged();
+    void participantChoicesChanged();
 
 private:
     QThread realtime_thread_;
@@ -98,6 +104,8 @@ private:
     QVariantList axis_gains_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
     QVariantList axis_minimums_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     QVariantList axis_maximums_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    QVariantList reference_participants_;
+    QString reference_participant_;
     QStringList usb_ports_;
     QTimer usb_scan_timer_;
     QString theme_{"dark"};

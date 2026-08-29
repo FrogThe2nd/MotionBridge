@@ -30,6 +30,7 @@ public slots:
     void set_axis_range(int axis, double minimum, double maximum);
     void set_stream_path(const QString& path);
     void set_theme(const QString& theme);
+    void set_reference_participant(const QString& reference);
 
 signals:
     void snapshot_ready(const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& device);
@@ -40,6 +41,8 @@ signals:
     void axis_gains_changed(const QVariantList& gains);
     void axis_ranges_changed(const QVariantList& minimums, const QVariantList& maximums);
     void theme_changed(const QString& theme);
+    void reference_participants_changed(const QVariantList& references);
+    void reference_participant_changed(const QString& reference);
 
 private slots:
     void on_frame(motion_bridge::MotionFrame frame);
@@ -52,6 +55,10 @@ private:
     void publish_connection_settings();
     void publish_axis_gains();
     void publish_axis_ranges();
+    void publish_participant_choices(const motion_bridge::MotionFrame& frame);
+    void publish_reference_participant();
+    void reset_participant_cache();
+    [[nodiscard]] bool cache_reference_participant(const QString& key, const QString& label = {});
     [[nodiscard]] std::chrono::microseconds now() const;
 
     motion_bridge::MotionEngine engine_;
@@ -69,4 +76,6 @@ private:
     QString intiface_url_{"ws://127.0.0.1:12345"};
     QString theme_{"dark"};
     QString reference_plane_label_;
+    QVariantList reference_participants_;
+    QString participant_cache_action_id_;
 };

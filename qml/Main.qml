@@ -60,9 +60,9 @@ ApplicationWindow {
         // implicitHeight here can capture an intermediate value immediately
         // after visibility changes and leave the panel clipped. Keep explicit
         // complete heights in sync with the layouts below.
-        const targetHeight = connectionExpanded && tuningExpanded ? 940
+        const targetHeight = connectionExpanded && tuningExpanded ? 1020
                            : connectionExpanded ? 540
-                           : tuningExpanded ? 620
+                           : tuningExpanded ? 700
                            : 190
         minimumWidth = tuningExpanded ? 980
                      : connectionExpanded ? 860
@@ -438,6 +438,65 @@ ApplicationWindow {
         }
     }
 
+    component ParticipantCombo: ComboBox {
+        id: participantControl
+        required property var choices
+        required property string selectedKey
+        property string unavailableText: qsTr("Automatic until a live frame arrives")
+        signal participantChosen(string key)
+        Layout.fillWidth: true
+        Layout.preferredHeight: 38
+        model: choices
+        textRole: "label"
+        valueRole: "key"
+        currentIndex: {
+            for (let i = 0; i < choices.length; ++i) {
+                if (choices[i].key === selectedKey) return i
+            }
+            return selectedKey.length ? -1 : 0
+        }
+        displayText: currentIndex >= 0 && count > 0 ? currentText : selectedKey.length ? selectedKey : unavailableText
+        onActivated: participantChosen(currentValue)
+        leftPadding: 12; rightPadding: 34
+        contentItem: Label {
+            text: participantControl.displayText
+            color: participantControl.currentIndex >= 0 && participantControl.count > 0 ? window.textPrimary : window.textMuted
+            font.pixelSize: 11
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        indicator: Label {
+            x: participantControl.width - width - 12; anchors.verticalCenter: parent.verticalCenter
+            text: "⌄"; color: window.textSecondary; font.pixelSize: 15
+        }
+        background: Rectangle {
+            radius: 10; color: window.fieldSurface
+            border.color: participantControl.activeFocus ? "#596FE3" : window.outline
+        }
+        delegate: ItemDelegate {
+            width: participantControl.width - 12
+            height: 34
+            text: participantControl.textAt(index)
+            highlighted: participantControl.highlightedIndex === index
+            background: Rectangle { radius: 8; color: parent.highlighted ? window.activeSurface : parent.hovered ? window.hoverSurface : "transparent" }
+            contentItem: Label { text: parent.text; color: window.textPrimary; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; leftPadding: 7 }
+        }
+        popup: Popup {
+            y: participantControl.height + 4
+            width: participantControl.width
+            implicitHeight: Math.min(contentItem.implicitHeight + 12, 220)
+            padding: 6
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: participantControl.popup.visible ? participantControl.delegateModel : null
+                currentIndex: participantControl.highlightedIndex
+                ScrollIndicator.vertical: ScrollIndicator { }
+            }
+            background: Rectangle { radius: 11; color: window.panel; border.color: window.outline }
+        }
+    }
+
     Rectangle {
         id: frame
         anchors.fill: parent
@@ -693,6 +752,35 @@ ApplicationWindow {
                         Label { text: qsTr("Motion tuning"); color: window.textPrimary; font.pixelSize: 16; font.bold: true }
                         Label { text: qsTr("Device-side response · raw game motion stays unchanged"); color: window.textMuted; font.pixelSize: 10; Layout.leftMargin: 7 }
                         Item { Layout.fillWidth: true }
+                    }
+                    Rectangle {
+                        visible: window.tuningExpanded
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 72
+                        radius: 14
+                        color: window.panel
+                        border.color: window.outline
+                        RowLayout {
+                            anchors.fill: parent; anchors.margins: 12; spacing: 12
+                            ColumnLayout {
+                                Layout.preferredWidth: 212; spacing: 2
+                                Label { text: qsTr("Participant routing"); color: window.textPrimary; font.pixelSize: 12; font.bold: true }
+                                Label { text: qsTr("Choose the motion source; target comes from the game stream"); color: window.textMuted; font.pixelSize: 9; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                            ColumnLayout {
+                                Layout.minimumWidth: 300
+                                Layout.preferredWidth: 360
+                                Layout.maximumWidth: 360
+                                spacing: 4
+                                Label { text: qsTr("REFERENCE PARTICIPANT"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
+                                ParticipantCombo {
+                                    choices: companion.referenceParticipants
+                                    selectedKey: companion.referenceParticipant
+                                    onParticipantChosen: companion.set_reference_participant(key)
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
                     }
                     GridLayout {
                         visible: window.tuningExpanded

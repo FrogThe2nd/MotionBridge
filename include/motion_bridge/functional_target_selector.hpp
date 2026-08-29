@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace motion_bridge {
@@ -19,7 +20,9 @@ public:
         MotionFrame& frame,
         const std::vector<std::string>& candidate_bones,
         const std::string& reference_origin_bone = "Penis01",
-        const std::string& alias_bone = "M_Gen");
+        const std::string& alias_bone = "M_Gen",
+        const std::string& preferred_reference_participant = {},
+        const std::unordered_map<std::string, std::vector<std::string>>& candidate_bones_by_reference = {});
     void reset();
 
     [[nodiscard]] const std::string& selected_participant() const noexcept;

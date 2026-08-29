@@ -29,6 +29,14 @@ MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent
         axis_maximums_ = maximums;
         emit settingsChanged();
     });
+    connect(pipeline_, &RealtimePipeline::reference_participants_changed, this, [this](const QVariantList& references) {
+        reference_participants_ = references;
+        emit participantChoicesChanged();
+    });
+    connect(pipeline_, &RealtimePipeline::reference_participant_changed, this, [this](const QString& reference) {
+        reference_participant_ = reference;
+        emit settingsChanged();
+    });
     connect(pipeline_, &RealtimePipeline::theme_changed, this, [this](const QString& theme) { theme_ = theme; emit themeChanged(); });
     usb_scan_timer_.setInterval(1500);
     connect(&usb_scan_timer_, &QTimer::timeout, this, &MotionBridgeController::refresh_usb_ports);
@@ -64,6 +72,8 @@ QString MotionBridgeController::intiface_url() const { return intiface_url_; }
 QVariantList MotionBridgeController::axis_gains() const { return axis_gains_; }
 QVariantList MotionBridgeController::axis_minimums() const { return axis_minimums_; }
 QVariantList MotionBridgeController::axis_maximums() const { return axis_maximums_; }
+QVariantList MotionBridgeController::reference_participants() const { return reference_participants_; }
+QString MotionBridgeController::reference_participant() const { return reference_participant_; }
 QStringList MotionBridgeController::usb_ports() const { return usb_ports_; }
 QString MotionBridgeController::theme() const { return theme_; }
 
@@ -76,6 +86,7 @@ void MotionBridgeController::set_intiface_url(const QString& url) { QMetaObject:
 void MotionBridgeController::set_axis_gain(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_gain", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
 void MotionBridgeController::set_axis_range(const int axis, const double minimum, const double maximum) { QMetaObject::invokeMethod(pipeline_, "set_axis_range", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, minimum), Q_ARG(double, maximum)); }
 void MotionBridgeController::set_stream_path(const QString& path) { QMetaObject::invokeMethod(pipeline_, "set_stream_path", Qt::QueuedConnection, Q_ARG(QString, path)); }
+void MotionBridgeController::set_reference_participant(const QString& reference) { QMetaObject::invokeMethod(pipeline_, "set_reference_participant", Qt::QueuedConnection, Q_ARG(QString, reference)); }
 
 QVariantMap MotionBridgeController::primary_screen_available_geometry() const {
     const auto* screen = QGuiApplication::primaryScreen();

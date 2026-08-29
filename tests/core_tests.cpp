@@ -253,6 +253,45 @@ void test_functional_target_releases_only_after_missing_grace() {
     assert(selector.selected_bone() == "L_Hand");
 }
 
+void test_functional_target_honours_explicit_reference_selection() {
+    FunctionalTargetSelector selector;
+    auto frame = orthogonal_frame();
+    frame.action_id = "HandAction";
+    frame.participants[1].bones.erase("M_Gen");
+    frame.participants[1].bones.emplace("R_Hand", pose("R_Hand", {0.2, 0.6, 0}));
+    Participant reference{"male:1", "male", "fallen-doll"};
+    reference.bones.emplace("Penis01", pose("Penis01", {10, 0, 0}));
+    Participant alternate{"female:1", "female", "fallen-doll"};
+    alternate.bones.emplace("R_Hand", pose("R_Hand", {9.8, 0.4, 0}));
+    frame.participants.push_back(std::move(reference));
+    frame.participants.push_back(std::move(alternate));
+
+    assert(selector.alias_target(frame, {"R_Hand"}, "Penis01", "M_Gen", "male:1"));
+    assert(selector.selected_participant() == "female:1");
+    require_close(frame.participants[3].bones.at("M_Gen").position.x, 9.8);
+}
+
+void test_functional_target_uses_contact_pair_for_selected_reference() {
+    FunctionalTargetSelector selector;
+    auto frame = orthogonal_frame();
+    frame.action_id = "VaginalMouth";
+    frame.participants[0].stable_key = "male:0";
+    frame.participants[1].bones.emplace("M_Jaw", pose("M_Jaw", {0, 0.05, 0}));
+
+    Participant second_reference{"male:1", "male", "fallen-doll"};
+    second_reference.bones.emplace("Penis01", pose("Penis01", {10, 0, 0}));
+    frame.participants.push_back(std::move(second_reference));
+    frame.participants[1].bones["M_Gen"].position = {10, 0.05, 0};
+
+    const std::unordered_map<std::string, std::vector<std::string>> pairs{
+        {"male:0", {"M_Jaw"}},
+        {"male:1", {"M_Gen"}},
+    };
+    assert(selector.alias_target(frame, {"M_Jaw", "M_Gen"}, "Penis01", "M_Gen", "male:1", pairs));
+    assert(selector.selected_bone() == "M_Gen");
+    require_close(frame.participants[1].bones.at("M_Gen").position.x, 10.0);
+}
+
 } // namespace
 
 int main() {
@@ -270,5 +309,7 @@ int main() {
     test_pitch_crosses_signed_angle_seam_without_output_jump();
     test_functional_target_priority_stays_locked_during_an_action();
     test_functional_target_releases_only_after_missing_grace();
+    test_functional_target_honours_explicit_reference_selection();
+    test_functional_target_uses_contact_pair_for_selected_reference();
     std::cout << "motion_bridge_core_tests: OK\n";
 }
