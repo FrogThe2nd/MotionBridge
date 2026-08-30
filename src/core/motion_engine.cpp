@@ -8,6 +8,9 @@ namespace motion_bridge {
 namespace {
 
 constexpr double kEpsilon = 1e-8;
+constexpr double kPlaneIntersectionBlendStartAlignment = 0.25;
+constexpr double kPlaneIntersectionFullAlignment = 0.75;
+constexpr double kPlaneIntersectionMaximumCorrectionFraction = 0.25;
 constexpr double kActivityDirectionThresholdMeters = 0.00075;
 constexpr double kActivityMinimumStrokeMeters = 0.005;
 
@@ -61,6 +64,10 @@ constexpr double kActivityMinimumStrokeMeters = 0.005;
 [[nodiscard]] double symmetric01(const double value, const double maximum) {
     return maximum <= kEpsilon ? 0.5 : clamp01(0.5 + value / (2.0 * maximum));
 }
+[[nodiscard]] double smoothstep01(const double value) {
+    const auto t = clamp01(value);
+    return t * t * (3.0 - 2.0 * t);
+}
 [[nodiscard]] const Participant* participant(const MotionFrame& frame, const std::string& key, const std::string& required_bone) {
     if (!key.empty()) {
         const auto found = std::find_if(frame.participants.begin(), frame.participants.end(), [&key](const Participant& item) { return item.stable_key == key; });
@@ -80,6 +87,50 @@ struct PelvisPlane {
     Vec3 normal;
     Vec3 tangent;
 };
+struct TargetBasis {
+    Vec3 origin;
+    Vec3 up;
+    Vec3 right;
+};
+
+[[nodiscard]] std::optional<TargetBasis> target_contact_basis(
+    const MotionFrame& frame,
+    const Participant* item) {
+    if (!frame.target_frame || item == nullptr) return std::nullopt;
+    const auto& spec = *frame.target_frame;
+    const auto* origin = bone(item, spec.origin_bone);
+    const auto* forward = bone(item, spec.forward_bone);
+    const auto* left = bone(item, spec.left_bone);
+    const auto* right = bone(item, spec.right_bone);
+    if (!origin || !forward || !left || !right) return std::nullopt;
+
+    const auto lateral = normalize(subtract(right->position, left->position));
+    if (!lateral) return std::nullopt;
+    if (spec.mode == "plane_normal" || spec.mode == "plane_intersection") {
+        // Direction landmarks describe the surface independently from the
+        // physical entrance anchor. For a body plane this is the line from the
+        // thigh midpoint to the spine; for a local contact ring it is the line
+        // from the lateral midpoint to the forward landmark.
+        const auto lateral_midpoint = scale(add(left->position, right->position), 0.5);
+        const auto longitudinal = normalize(subtract(forward->position, lateral_midpoint));
+        if (!longitudinal) return std::nullopt;
+        const auto up = normalize(cross(*lateral, *longitudinal));
+        if (!up) return std::nullopt;
+        const auto tangent = normalize(project_on_plane(*lateral, *up));
+        // The declared origin is the physical entrance and therefore anchors
+        // the plane. The other landmarks determine its orientation only. An
+        // averaged landmark position would move the entrance toward the labia,
+        // anal ring, or lips by an arbitrary rig-dependent offset.
+        return tangent ? std::optional<TargetBasis>{TargetBasis{origin->position, *up, *tangent}} : std::nullopt;
+    }
+    if (spec.mode == "axis_tangent") {
+        const auto up = normalize(subtract(origin->position, forward->position));
+        if (!up) return std::nullopt;
+        const auto tangent = normalize(project_on_plane(*lateral, *up));
+        return tangent ? std::optional<TargetBasis>{TargetBasis{origin->position, *up, *tangent}} : std::nullopt;
+    }
+    return std::nullopt;
+}
 [[nodiscard]] std::optional<PelvisPlane> plane_from_landmarks(
     const Participant* item,
     const std::string& center_name,
@@ -199,29 +250,68 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     const auto reference_forward = normalize(cross(*reference_right, *axis));
     if (!reference_forward) return std::nullopt;
 
-    const auto delta = subtract(target->position, origin->position);
-    const auto axial = dot(delta, *axis);
-    const auto closest = add(origin->position, scale(*axis, std::clamp(axial, 0.0, length)));
-    const auto radial = subtract(target->position, closest);
-    const auto radial_distance = magnitude(radial);
-    const auto radius = length * contact_.radius_scale;
-    const auto contact_valid = radial_distance <= radius && axial >= -radius && axial <= length + radius;
-    if (contact_.require_contact && !contact_valid) return std::nullopt;
-
     const auto* secondary_target = contact_.target_secondary_bone.empty()
         ? nullptr
         : bone(target_owner, contact_.target_secondary_bone);
     const auto bilateral = secondary_target != nullptr;
+    const auto contact_basis = bilateral ? std::optional<TargetBasis>{} : target_contact_basis(frame, target_owner);
+    const auto delta = subtract(target->position, origin->position);
+    auto axial = dot(delta, *axis);
+    const auto closest = add(origin->position, scale(*axis, std::clamp(axial, 0.0, length)));
+    const auto radial = subtract(target->position, closest);
+    auto translation_delta = body_plane ? project_on_plane(delta, body_plane->normal) : radial;
+    auto radial_distance = magnitude(radial);
+    const auto plane_intersection_requested = !bilateral
+        && frame.target_frame
+        && (frame.target_frame->mode == "plane_intersection"
+            || frame.target_frame->translation_mode == "plane_intersection");
+    auto plane_intersection_used = false;
+    auto plane_intersection_blended = false;
+    if (plane_intersection_requested && contact_basis) {
+        const auto alignment = dot(*axis, contact_basis->up);
+        const auto absolute_alignment = std::abs(alignment);
+        if (absolute_alignment > kEpsilon) {
+            const auto intersection_distance = dot(
+                subtract(contact_basis->origin, origin->position), contact_basis->up) / alignment;
+            if (std::isfinite(intersection_distance)) {
+                const auto blend = smoothstep01(
+                    (absolute_alignment - kPlaneIntersectionBlendStartAlignment)
+                    / (kPlaneIntersectionFullAlignment - kPlaneIntersectionBlendStartAlignment));
+                const auto maximum_correction = length * kPlaneIntersectionMaximumCorrectionFraction;
+                const auto correction = std::clamp(intersection_distance - axial, -maximum_correction, maximum_correction);
+                axial += correction * blend;
+                const auto intersection = add(origin->position, scale(*axis, axial));
+                // Preserve the existing signs: translations describe the
+                // target entrance relative to the Reference axis. The origin
+                // anchors the entrance while the other landmarks determine
+                // the plane normal used by the intersection.
+                translation_delta = subtract(contact_basis->origin, intersection);
+                radial_distance = magnitude(translation_delta);
+                plane_intersection_used = blend > kEpsilon;
+                plane_intersection_blended = plane_intersection_used && blend < 1.0 - kEpsilon;
+            }
+        }
+    }
+    const auto radius = length * contact_.radius_scale;
+    const auto contact_valid = radial_distance <= radius && axial >= -radius && axial <= length + radius;
+    if (contact_.require_contact && !contact_valid) return std::nullopt;
+
     const auto target_right = bilateral
         ? project_on_plane(subtract(target->position, secondary_target->position), *axis)
-        : project_on_plane(local_axis(target->rotation, contact_.target_right_axis), *axis);
-    const auto target_up = bilateral ? *axis : local_axis(target->rotation, contact_.target_up_axis);
+        : project_on_plane(contact_basis ? contact_basis->right : local_axis(target->rotation, contact_.target_right_axis), *axis);
+    const auto target_up = bilateral ? *axis
+        : contact_basis ? contact_basis->up
+        : local_axis(target->rotation, contact_.target_up_axis);
     if (magnitude(target_right) <= kEpsilon) return std::nullopt;
     const auto wrapped_twist = signed_angle_degrees(*reference_right, target_right, *axis);
     const auto wrapped_roll = -signed_angle_degrees(*axis, project_on_plane(target_up, *reference_forward), *reference_forward);
     const auto wrapped_pitch = signed_angle_degrees(*axis, project_on_plane(target_up, *reference_right), *reference_right);
     const auto binding_key = reference->stable_key + "|" + target_owner->stable_key + "|" + frame.action_id + "|"
-        + contact_.target_bone + "|" + contact_.target_secondary_bone + "|" + contact_.target_up_axis + "|" + contact_.target_right_axis;
+        + contact_.target_bone + "|" + contact_.target_secondary_bone + "|" + contact_.target_up_axis + "|" + contact_.target_right_axis
+        + "|" + (frame.target_frame ? frame.target_frame->mode + ":" + frame.target_frame->source_bone + ":"
+            + frame.target_frame->origin_bone + ":" + frame.target_frame->forward_bone + ":"
+            + frame.target_frame->left_bone + ":" + frame.target_frame->right_bone + ":"
+            + frame.target_frame->translation_mode : "single_bone");
     const auto binding_changed = binding_key != angle_binding_key_;
     if (binding_changed || !twist_baseline_ || !roll_baseline_ || !pitch_baseline_) {
         twist_baseline_ = wrapped_twist;
@@ -288,9 +378,8 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     // Per-action calibration describes the game skeleton's local direction;
     // the global control remains a user override, so two inversions cancel.
     if (contact_.invert_l0 != frame.direct_l0_inverted) raw[0] = 1.0 - raw[0];
-    const auto plane_delta = body_plane ? project_on_plane(delta, body_plane->normal) : radial;
-    raw[1] = symmetric01(dot(plane_delta, *reference_forward), contact_.lateral_range_meters);
-    raw[2] = symmetric01(dot(plane_delta, *reference_right), contact_.lateral_range_meters);
+    raw[1] = symmetric01(dot(translation_delta, *reference_forward), contact_.lateral_range_meters);
+    raw[2] = symmetric01(dot(translation_delta, *reference_right), contact_.lateral_range_meters);
     raw[3] = symmetric01(twist, contact_.twist_range_degrees);
     raw[4] = symmetric01(roll, contact_.tilt_range_degrees);
     raw[5] = symmetric01(pitch, contact_.tilt_range_degrees);
@@ -299,7 +388,11 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     }
     return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw, frame.active_axes, binding_key),
         {true, contact_valid, contact_valid ? "ok" : "outside_contact_radius", length, radius, axial, radial_distance, twist, roll, pitch,
-            bilateral ? "bilateral_reference_axis" : "single_bone"},
+            bilateral ? "bilateral_reference_axis"
+                : plane_intersection_blended ? "target_plane_blended"
+                : plane_intersection_used ? "target_plane_intersection"
+                : plane_intersection_requested ? "target_plane_fallback"
+                : contact_basis ? "target_contact_frame" : "single_bone"},
         frame.action_id, frame.action_category};
 }
 

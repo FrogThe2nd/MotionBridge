@@ -29,6 +29,15 @@ MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent
         axis_maximums_ = maximums;
         emit settingsChanged();
     });
+    connect(pipeline_, &RealtimePipeline::output_processing_settings_changed, this,
+        [this](const int rate_hz, const bool soft_start_enabled, const int soft_start_duration_ms,
+               const QVariantList& axis_output_settings) {
+            output_rate_hz_ = rate_hz;
+            soft_start_enabled_ = soft_start_enabled;
+            soft_start_duration_ms_ = soft_start_duration_ms;
+            axis_output_settings_ = axis_output_settings;
+            emit settingsChanged();
+        });
     connect(pipeline_, &RealtimePipeline::reference_participants_changed, this, [this](const QVariantList& references) {
         reference_participants_ = references;
         emit participantChoicesChanged();
@@ -72,6 +81,10 @@ QString MotionBridgeController::intiface_url() const { return intiface_url_; }
 QVariantList MotionBridgeController::axis_gains() const { return axis_gains_; }
 QVariantList MotionBridgeController::axis_minimums() const { return axis_minimums_; }
 QVariantList MotionBridgeController::axis_maximums() const { return axis_maximums_; }
+int MotionBridgeController::output_rate_hz() const { return output_rate_hz_; }
+bool MotionBridgeController::soft_start_enabled() const { return soft_start_enabled_; }
+int MotionBridgeController::soft_start_duration_ms() const { return soft_start_duration_ms_; }
+QVariantList MotionBridgeController::axis_output_settings() const { return axis_output_settings_; }
 QVariantList MotionBridgeController::reference_participants() const { return reference_participants_; }
 QString MotionBridgeController::reference_participant() const { return reference_participant_; }
 QStringList MotionBridgeController::usb_ports() const { return usb_ports_; }
@@ -85,6 +98,22 @@ void MotionBridgeController::set_wifi_endpoint(const QString& host, const int po
 void MotionBridgeController::set_intiface_url(const QString& url) { QMetaObject::invokeMethod(pipeline_, "set_intiface_url", Qt::QueuedConnection, Q_ARG(QString, url)); }
 void MotionBridgeController::set_axis_gain(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_gain", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
 void MotionBridgeController::set_axis_range(const int axis, const double minimum, const double maximum) { QMetaObject::invokeMethod(pipeline_, "set_axis_range", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, minimum), Q_ARG(double, maximum)); }
+void MotionBridgeController::set_output_rate_hz(const int value) { QMetaObject::invokeMethod(pipeline_, "set_output_rate_hz", Qt::QueuedConnection, Q_ARG(int, value)); }
+void MotionBridgeController::set_soft_start_enabled(const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_soft_start_enabled", Qt::QueuedConnection, Q_ARG(bool, enabled)); }
+void MotionBridgeController::set_soft_start_duration_ms(const int value) { QMetaObject::invokeMethod(pipeline_, "set_soft_start_duration_ms", Qt::QueuedConnection, Q_ARG(int, value)); }
+void MotionBridgeController::set_axis_output_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_output_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
+void MotionBridgeController::set_axis_safe_value(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_safe_value", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
+void MotionBridgeController::set_axis_speed_limit_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_speed_limit_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
+void MotionBridgeController::set_axis_speed_limit(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_speed_limit", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
+void MotionBridgeController::set_axis_remap_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_remap_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
+void MotionBridgeController::set_axis_remap_mode(const int axis, const QString& mode) { QMetaObject::invokeMethod(pipeline_, "set_axis_remap_mode", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(QString, mode)); }
+void MotionBridgeController::set_axis_remap_target(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_remap_target", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
+void MotionBridgeController::set_axis_remap_curve(const int axis, const double lower_input, const double lower_factor,
+                                                   const double upper_input, const double upper_factor) {
+    QMetaObject::invokeMethod(pipeline_, "set_axis_remap_curve", Qt::QueuedConnection,
+                              Q_ARG(int, axis), Q_ARG(double, lower_input), Q_ARG(double, lower_factor),
+                              Q_ARG(double, upper_input), Q_ARG(double, upper_factor));
+}
 void MotionBridgeController::set_stream_path(const QString& path) { QMetaObject::invokeMethod(pipeline_, "set_stream_path", Qt::QueuedConnection, Q_ARG(QString, path)); }
 void MotionBridgeController::set_reference_participant(const QString& reference) { QMetaObject::invokeMethod(pipeline_, "set_reference_participant", Qt::QueuedConnection, Q_ARG(QString, reference)); }
 

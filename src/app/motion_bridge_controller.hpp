@@ -29,6 +29,10 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QVariantList axisGains READ axis_gains NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMinimums READ axis_minimums NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMaximums READ axis_maximums NOTIFY settingsChanged)
+    Q_PROPERTY(int outputRateHz READ output_rate_hz NOTIFY settingsChanged)
+    Q_PROPERTY(bool softStartEnabled READ soft_start_enabled NOTIFY settingsChanged)
+    Q_PROPERTY(int softStartDurationMs READ soft_start_duration_ms NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantList axisOutputSettings READ axis_output_settings NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList referenceParticipants READ reference_participants NOTIFY participantChoicesChanged)
     Q_PROPERTY(QString referenceParticipant READ reference_participant NOTIFY settingsChanged)
     Q_PROPERTY(QStringList usbPorts READ usb_ports NOTIFY usbPortsChanged)
@@ -56,6 +60,10 @@ public:
     [[nodiscard]] QVariantList axis_gains() const;
     [[nodiscard]] QVariantList axis_minimums() const;
     [[nodiscard]] QVariantList axis_maximums() const;
+    [[nodiscard]] int output_rate_hz() const;
+    [[nodiscard]] bool soft_start_enabled() const;
+    [[nodiscard]] int soft_start_duration_ms() const;
+    [[nodiscard]] QVariantList axis_output_settings() const;
     [[nodiscard]] QVariantList reference_participants() const;
     [[nodiscard]] QString reference_participant() const;
     [[nodiscard]] QStringList usb_ports() const;
@@ -69,6 +77,18 @@ public:
     Q_INVOKABLE void set_intiface_url(const QString& url);
     Q_INVOKABLE void set_axis_gain(int axis, double value);
     Q_INVOKABLE void set_axis_range(int axis, double minimum, double maximum);
+    Q_INVOKABLE void set_output_rate_hz(int value);
+    Q_INVOKABLE void set_soft_start_enabled(bool enabled);
+    Q_INVOKABLE void set_soft_start_duration_ms(int value);
+    Q_INVOKABLE void set_axis_output_enabled(int axis, bool enabled);
+    Q_INVOKABLE void set_axis_safe_value(int axis, double value);
+    Q_INVOKABLE void set_axis_speed_limit_enabled(int axis, bool enabled);
+    Q_INVOKABLE void set_axis_speed_limit(int axis, double value);
+    Q_INVOKABLE void set_axis_remap_enabled(int axis, bool enabled);
+    Q_INVOKABLE void set_axis_remap_mode(int axis, const QString& mode);
+    Q_INVOKABLE void set_axis_remap_target(int axis, double value);
+    Q_INVOKABLE void set_axis_remap_curve(int axis, double lower_input, double lower_factor,
+                                          double upper_input, double upper_factor);
     Q_INVOKABLE void set_stream_path(const QString& path);
     Q_INVOKABLE void refresh_usb_ports();
     Q_INVOKABLE void set_theme(const QString& theme);
@@ -104,6 +124,10 @@ private:
     QVariantList axis_gains_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
     QVariantList axis_minimums_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     QVariantList axis_maximums_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    int output_rate_hz_{50};
+    bool soft_start_enabled_{true};
+    int soft_start_duration_ms_{600};
+    QVariantList axis_output_settings_;
     QVariantList reference_participants_;
     QString reference_participant_;
     QStringList usb_ports_;

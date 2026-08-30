@@ -25,6 +25,13 @@ void insert_alias(Participant& participant, const BonePose& source, const std::s
     participant.bones.insert_or_assign(alias_name, std::move(alias));
 }
 
+void select_contact_frame(MotionFrame& frame, const Participant& participant, const std::string& source_bone) {
+    frame.target_frame.reset();
+    const auto found = std::find_if(participant.target_frames.begin(), participant.target_frames.end(),
+        [&source_bone](const TargetContactFrame& item) { return item.source_bone == source_bone; });
+    if (found != participant.target_frames.end()) frame.target_frame = *found;
+}
+
 } // namespace
 
 FunctionalTargetSelector::FunctionalTargetSelector(const std::size_t missing_grace_frames)
@@ -37,6 +44,7 @@ bool FunctionalTargetSelector::alias_target(
     const std::string& alias_bone,
     const std::string& preferred_reference_participant,
     const std::unordered_map<std::string, std::vector<std::string>>& candidate_bones_by_reference) {
+    frame.target_frame.reset();
     if (!frame.action_active || frame.action_id.empty() || candidate_bones.empty()) {
         reset();
         return false;
@@ -71,6 +79,7 @@ bool FunctionalTargetSelector::alias_target(
             if (participant.stable_key != participant_key_) continue;
             if (const auto* selected = find_bone(participant, bone_name_)) {
                 insert_alias(participant, *selected, alias_bone);
+                select_contact_frame(frame, participant, bone_name_);
                 missing_frames_ = 0;
                 return true;
             }
@@ -107,6 +116,7 @@ bool FunctionalTargetSelector::alias_target(
         participant_key_ = selected_owner->stable_key;
         bone_name_ = candidate_name;
         insert_alias(*selected_owner, *selected, alias_bone);
+        select_contact_frame(frame, *selected_owner, candidate_name);
         return true;
     }
     return false;

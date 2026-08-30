@@ -31,6 +31,19 @@ struct BonePose {
     Quaternion rotation;
 };
 
+// Optional adapter-declared contact surface. Nearby landmarks always supply a
+// stable orientation for R0/R1/R2. Adapters may additionally opt translations
+// into plane_intersection; an empty mode keeps the legacy single-point path.
+struct TargetContactFrame {
+    std::string mode;
+    std::string source_bone;
+    std::string origin_bone;
+    std::string forward_bone;
+    std::string left_bone;
+    std::string right_bone;
+    std::string translation_mode;
+};
+
 struct Participant {
     std::string stable_key;
     std::string role;
@@ -39,6 +52,7 @@ struct Participant {
     // remains the internal selection key because it is unique and durable.
     std::string participant_tag;
     std::unordered_map<std::string, BonePose> bones;
+    std::vector<TargetContactFrame> target_frames;
 };
 
 // A game adapter may provide a verified body plane with native bone names.
@@ -76,6 +90,8 @@ struct MotionFrame {
     // Optional low-cost body landmarks supplied by the game profile. When
     // absent, Fallen Doll's original humanoid pelvis names remain supported.
     std::optional<BodyReferencePlane> reference_plane;
+    // Resolved after participant and functional-bone selection for this action.
+    std::optional<TargetContactFrame> target_frame;
 };
 
 struct Axes {

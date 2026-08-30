@@ -1,4 +1,6 @@
 # Build and package output
+build-core/
+build-core-mingw/
 out/
 dist/
 
@@ -18,3 +20,7 @@ config/
 # Runtime diagnostics
 *.log
 *.dmp
+
+# Local Discord bot credentials and dependencies
+.discord.env
+tools/discord-bot/node_modules/

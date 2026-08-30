@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -7,12 +9,14 @@ Rectangle {
     required property int axisIndex
     required property string axisName
     required property real axisValue
+    required property var controller
     property bool darkTheme: true
     property real gain: 1.0
     property real outputMinimum: 0.0
     property real outputMaximum: 1.0
+    property var outputSettings: ({})
     Layout.fillWidth: true
-    Layout.preferredHeight: 164
+    Layout.preferredHeight: 128
     radius: 15
     color: darkTheme ? "#111722" : "#FFFFFF"
     border.color: darkTheme ? "#202B3B" : "#D5DEE9"
@@ -23,13 +27,146 @@ Rectangle {
     readonly property color mutedText: darkTheme ? "#637189" : "#7A889A"
     readonly property color trackSurface: darkTheme ? "#080D15" : "#E8EDF3"
     readonly property color valueSurface: darkTheme ? "#192231" : "#EEF2F7"
+    readonly property color enabledGreen: "#38D47A"
+    readonly property color disabledRed: "#F06A5D"
+    readonly property bool axisOutputEnabled: !outputSettings || outputSettings.axisEnabled === undefined || outputSettings.axisEnabled === true
+    readonly property real axisSafeValue: outputSettings && outputSettings.safeValue !== undefined ? outputSettings.safeValue : 0.5
+    readonly property bool speedEnabled: outputSettings && outputSettings.speedEnabled === true
+    readonly property real speedLimit: outputSettings && outputSettings.maxSpeed !== undefined ? outputSettings.maxSpeed : 4.0
+    readonly property bool remapEnabled: outputSettings && outputSettings.remapEnabled === true
+    readonly property string remapMode: outputSettings && outputSettings.remapMode !== undefined ? outputSettings.remapMode : "value"
+    readonly property real remapTarget: outputSettings && outputSettings.targetValue !== undefined ? outputSettings.targetValue : 0.5
+    readonly property real remapLowerInput: outputSettings && outputSettings.lowerInput !== undefined ? outputSettings.lowerInput : 0.0
+    readonly property real remapLowerFactor: outputSettings && outputSettings.lowerFactor !== undefined ? outputSettings.lowerFactor : 1.0
+    readonly property real remapUpperInput: outputSettings && outputSettings.upperInput !== undefined ? outputSettings.upperInput : 1.0
+    readonly property real remapUpperFactor: outputSettings && outputSettings.upperFactor !== undefined ? outputSettings.upperFactor : 0.0
+    readonly property real remapInputValue: Math.max(0, Math.min(1, axisValue))
+
+    component CompactToggle: AbstractButton {
+        id: toggle
+        checkable: true
+        implicitWidth: 32
+        implicitHeight: 17
+        contentItem: Item {}
+        background: Rectangle {
+            radius: height / 2
+            color: toggle.checked ? root.enabledGreen : (root.darkTheme ? "#2A3545" : "#CAD3DE")
+            border.width: 1
+            border.color: toggle.checked ? Qt.lighter(root.enabledGreen, 1.08) : (root.darkTheme ? "#3A475A" : "#B8C3D0")
+            Rectangle {
+                width: 13; height: 13; radius: 7
+                y: 2
+                x: toggle.checked ? parent.width - width - 2 : 2
+                color: toggle.checked ? "#FFFFFF" : (root.darkTheme ? "#AAB5C5" : "#FFFFFF")
+                Behavior on x { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+            }
+        }
+    }
+
+    component StableStepper: Item {
+        id: stepper
+        property real value: 4.0
+        property real from: 0.25
+        property real to: 10.0
+        property real stepSize: 0.25
+        property int decimals: 2
+        property string suffixText: "units/s"
+        property int numberWidth: 39
+        property int suffixWidth: 43
+        signal valueModified(real nextValue)
+        implicitWidth: 148
+        implicitHeight: 27
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 6
+            color: root.darkTheme ? "#101722" : "#F0F3F7"
+            border.color: root.darkTheme ? "#334155" : "#C8D2DE"
+        }
+        ToolButton {
+            id: speedDown
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 27
+            onClicked: stepper.valueModified(Math.max(stepper.from, stepper.value - stepper.stepSize))
+            background: Rectangle {
+                radius: 6
+                color: speedDown.pressed ? root.valueSurface : speedDown.hovered ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10) : "transparent"
+            }
+            contentItem: Label {
+                text: "−"
+                color: root.secondaryText
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            height: parent.height
+            spacing: 3
+            Label {
+                width: stepper.numberWidth
+                height: parent.height
+                text: stepper.value.toFixed(stepper.decimals)
+                color: root.primaryText
+                font.pixelSize: 10
+                font.family: "Cascadia Mono"
+                horizontalAlignment: Text.AlignRight
+                verticalAlignment: Text.AlignVCenter
+            }
+            Label {
+                width: stepper.suffixWidth
+                height: parent.height
+                text: stepper.suffixText
+                color: root.mutedText
+                font.pixelSize: 9
+                horizontalAlignment: Text.AlignLeft
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+        ToolButton {
+            id: speedUp
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 27
+            onClicked: stepper.valueModified(Math.min(stepper.to, stepper.value + stepper.stepSize))
+            background: Rectangle {
+                radius: 6
+                color: speedUp.pressed ? root.valueSurface : speedUp.hovered ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10) : "transparent"
+            }
+            contentItem: Label {
+                text: "+"
+                color: root.secondaryText
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+    }
+
+    function openPopupNear(button, popup) {
+        const overlay = Overlay.overlay
+        if (!overlay) {
+            popup.open()
+            return
+        }
+        const point = button.mapToItem(overlay, 0, button.height + 7)
+        popup.x = Math.max(8, Math.min(point.x + button.width - popup.width, overlay.width - popup.width - 8))
+        const above = button.mapToItem(overlay, 0, -popup.height - 7).y
+        popup.y = point.y + popup.height + 8 <= overlay.height ? point.y : Math.max(8, above)
+        popup.open()
+    }
 
     function commitGain() {
-        companion.set_axis_gain(root.axisIndex, gainSlider.value)
+        root.controller.set_axis_gain(root.axisIndex, gainSlider.value)
     }
 
     function commitRange() {
-        companion.set_axis_range(root.axisIndex,
+        root.controller.set_axis_range(root.axisIndex,
                                  rangeSlider.first.value,
                                  rangeSlider.second.value)
     }
@@ -49,12 +186,88 @@ Rectangle {
     }
 
     ColumnLayout {
-        anchors.fill: parent; anchors.margins: 15; spacing: 8
+        anchors.fill: parent; anchors.margins: 12; spacing: 6
         RowLayout {
             Layout.fillWidth: true
-            Rectangle { width: 8; height: 8; radius: 4; color: root.accent }
+            Rectangle { Layout.preferredWidth: 8; Layout.preferredHeight: 8; radius: 4; color: root.accent }
             Label { text: root.axisName; color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.7 }
             Item { Layout.fillWidth: true }
+            ToolButton {
+                id: remapButton
+                Layout.preferredWidth: 22; Layout.preferredHeight: 22
+                onClicked: {
+                    speedPopup.close()
+                    root.openPopupNear(remapButton, remapPopup)
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: root.remapEnabled ? (root.darkTheme ? "#173728" : "#E8F8EF")
+                                                   : remapButton.hovered ? root.valueSurface : "transparent"
+                    border.width: root.remapEnabled ? 1 : 0
+                    border.color: root.enabledGreen
+                }
+                contentItem: Canvas {
+                    id: remapIcon
+                    anchors.fill: parent
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = root.remapEnabled ? root.enabledGreen : root.secondaryText
+                        ctx.lineWidth = 1.4
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(4, 7); ctx.lineTo(18, 7); ctx.lineTo(15.5, 4.5)
+                        ctx.moveTo(18, 15); ctx.lineTo(4, 15); ctx.lineTo(6.5, 17.5)
+                        ctx.stroke()
+                    }
+                    Connections { target: root; function onOutputSettingsChanged() { remapIcon.requestPaint() } }
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Signal remapping")
+            }
+            ToolButton {
+                id: speedButton
+                Layout.preferredWidth: 22; Layout.preferredHeight: 22
+                onClicked: {
+                    remapPopup.close()
+                    root.openPopupNear(speedButton, speedPopup)
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: !root.axisOutputEnabled ? (root.darkTheme ? "#3A2223" : "#FCECEA")
+                                               : root.speedEnabled ? (root.darkTheme ? "#173728" : "#E8F8EF")
+                                                   : speedButton.hovered ? root.valueSurface : "transparent"
+                    border.width: (!root.axisOutputEnabled || root.speedEnabled) ? 1 : 0
+                    border.color: root.axisOutputEnabled ? root.enabledGreen : root.disabledRed
+                }
+                contentItem: Canvas {
+                    id: speedIcon
+                    anchors.fill: parent
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = !root.axisOutputEnabled ? root.disabledRed
+                                                                 : root.speedEnabled ? root.enabledGreen : root.secondaryText
+                        ctx.lineWidth = 1.4
+                        ctx.lineCap = "round"
+                        ctx.beginPath()
+                        ctx.arc(11, 12, 6.5, Math.PI * 0.85, Math.PI * 2.15)
+                        ctx.moveTo(11, 12); ctx.lineTo(14.7, 8.3)
+                        ctx.stroke()
+                        ctx.fillStyle = root.speedEnabled ? root.enabledGreen : root.secondaryText
+                        ctx.beginPath(); ctx.arc(11, 12, 1.2, 0, Math.PI * 2); ctx.fill()
+                        if (!root.axisOutputEnabled) {
+                            ctx.strokeStyle = root.disabledRed
+                            ctx.lineWidth = 1.8
+                            ctx.beginPath(); ctx.moveTo(5, 5); ctx.lineTo(17, 18); ctx.stroke()
+                        }
+                    }
+                    Connections { target: root; function onOutputSettingsChanged() { speedIcon.requestPaint() } }
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: root.axisOutputEnabled ? qsTr("Speed limit") : qsTr("Axis output off")
+            }
             Label { text: Math.round(root.axisValue * 9999).toString().padStart(4, "0"); color: root.primaryText; font.family: "Cascadia Mono"; font.pixelSize: 17; font.weight: Font.DemiBold }
         }
         Rectangle {
@@ -75,10 +288,25 @@ Rectangle {
             Label { text: qsTr("GAIN"); color: root.mutedText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.8 }
             Slider {
                 id: gainSlider
-                Layout.fillWidth: true; from: 0.25; to: 4.0; stepSize: 0.05; value: root.gain
+                Layout.fillWidth: true; Layout.preferredHeight: 20
+                from: 0.25; to: 4.0; stepSize: 0.05; value: root.gain
                 onPressedChanged: if (!pressed) root.commitGain()
+                background: Rectangle {
+                    x: gainSlider.leftPadding
+                    y: gainSlider.topPadding + gainSlider.availableHeight / 2 - height / 2
+                    width: gainSlider.availableWidth; height: 4; radius: 2
+                    color: root.trackSurface
+                    Rectangle { width: gainSlider.visualPosition * parent.width; height: parent.height; radius: 2; color: root.accent; opacity: 0.78 }
+                }
+                handle: Rectangle {
+                    x: gainSlider.leftPadding + gainSlider.visualPosition * (gainSlider.availableWidth - width)
+                    y: gainSlider.topPadding + gainSlider.availableHeight / 2 - height / 2
+                    width: 14; height: 14; radius: 7
+                    color: gainSlider.pressed ? root.accent : root.primaryText
+                    border.width: 2; border.color: root.accent
+                }
             }
-            Rectangle { width: 48; height: 24; radius: 8; color: root.valueSurface
+            Rectangle { Layout.preferredWidth: 48; Layout.preferredHeight: 22; radius: 7; color: root.valueSurface
                 Label { anchors.centerIn: parent; text: gainSlider.value.toFixed(2) + "×"; color: root.secondaryText; font.pixelSize: 10; font.family: "Cascadia Mono" }
             }
         }
@@ -88,6 +316,7 @@ Rectangle {
             RangeSlider {
                 id: rangeSlider
                 Layout.fillWidth: true
+                Layout.preferredHeight: 20
                 from: 0.0
                 to: 1.0
                 stepSize: 0.01
@@ -100,14 +329,14 @@ Rectangle {
                     x: rangeSlider.leftPadding
                     y: rangeSlider.topPadding + rangeSlider.availableHeight / 2 - height / 2
                     width: rangeSlider.availableWidth
-                    height: 6
-                    radius: 3
+                    height: 4
+                    radius: 2
                     color: root.trackSurface
                     Rectangle {
                         x: rangeSlider.first.visualPosition * parent.width
                         width: (rangeSlider.second.visualPosition - rangeSlider.first.visualPosition) * parent.width
                         height: parent.height
-                        radius: 3
+                        radius: 2
                         color: root.accent
                         opacity: 0.82
                     }
@@ -115,19 +344,19 @@ Rectangle {
                 first.handle: Rectangle {
                     x: rangeSlider.leftPadding + rangeSlider.first.visualPosition * (rangeSlider.availableWidth - width)
                     y: rangeSlider.topPadding + rangeSlider.availableHeight / 2 - height / 2
-                    width: 16; height: 16; radius: 8
+                    width: 14; height: 14; radius: 7
                     color: rangeSlider.first.pressed ? root.accent : root.primaryText
                     border.width: 2; border.color: root.accent
                 }
                 second.handle: Rectangle {
                     x: rangeSlider.leftPadding + rangeSlider.second.visualPosition * (rangeSlider.availableWidth - width)
                     y: rangeSlider.topPadding + rangeSlider.availableHeight / 2 - height / 2
-                    width: 16; height: 16; radius: 8
+                    width: 14; height: 14; radius: 7
                     color: rangeSlider.second.pressed ? root.accent : root.primaryText
                     border.width: 2; border.color: root.accent
                 }
             }
-            Rectangle { width: 88; height: 24; radius: 8; color: root.valueSurface
+            Rectangle { Layout.preferredWidth: 88; Layout.preferredHeight: 22; radius: 7; color: root.valueSurface
                 Label {
                     anchors.centerIn: parent
                     text: Math.round(rangeSlider.first.value * 9999).toString().padStart(4, "0")
@@ -136,6 +365,317 @@ Rectangle {
                     color: root.secondaryText
                     font.pixelSize: 9
                     font.family: "Cascadia Mono"
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: speedPopup
+        parent: Overlay.overlay
+        width: 240
+        padding: 13
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 10
+            color: root.darkTheme ? "#151C27" : "#FFFFFF"
+            border.color: root.darkTheme ? "#303C4E" : "#CDD6E1"
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("AXIS OUTPUT"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                CompactToggle {
+                    checked: root.axisOutputEnabled
+                    onToggled: root.controller.set_axis_output_enabled(root.axisIndex, checked)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("SAFE POSITION"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                StableStepper {
+                    Layout.preferredWidth: 112
+                    from: 0; to: 100; stepSize: 1
+                    value: Math.round(root.axisSafeValue * 100)
+                    decimals: 0
+                    suffixText: "%"
+                    numberWidth: 30
+                    suffixWidth: 10
+                    onValueModified: (nextValue) => root.controller.set_axis_safe_value(root.axisIndex, nextValue / 100)
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: root.darkTheme ? "#293547" : "#E0E6ED"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("SPEED LIMIT"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                CompactToggle {
+                    checked: root.speedEnabled
+                    onToggled: root.controller.set_axis_speed_limit_enabled(root.axisIndex, checked)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                enabled: root.speedEnabled
+                Label { text: qsTr("LIMIT"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                StableStepper {
+                    Layout.preferredWidth: 148
+                    value: root.speedLimit
+                    onValueModified: (nextValue) => root.controller.set_axis_speed_limit(root.axisIndex, nextValue)
+                }
+            }
+            Label {
+                Layout.alignment: Qt.AlignRight
+                text: (1.0 / Math.max(0.25, root.speedLimit)).toFixed(3) + " " + qsTr("s/unit")
+                color: root.mutedText; font.pixelSize: 10; font.family: "Cascadia Mono"
+            }
+        }
+    }
+
+    Popup {
+        id: remapPopup
+        parent: Overlay.overlay
+        width: 278
+        padding: 13
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        property real editLowerInput: root.remapLowerInput
+        property real editLowerFactor: root.remapLowerFactor
+        property real editUpperInput: root.remapUpperInput
+        property real editUpperFactor: root.remapUpperFactor
+        function curveFactor(input) {
+            if (input <= editLowerInput) return editLowerFactor
+            if (input >= editUpperInput) return editUpperFactor
+            const position = (input - editLowerInput) / (editUpperInput - editLowerInput)
+            return editLowerFactor + (editUpperFactor - editLowerFactor) * position
+        }
+        function saveCurve() {
+            root.controller.set_axis_remap_curve(root.axisIndex,
+                                                 editLowerInput, editLowerFactor,
+                                                 editUpperInput, editUpperFactor)
+        }
+        onOpened: {
+            editLowerInput = root.remapLowerInput
+            editLowerFactor = root.remapLowerFactor
+            editUpperInput = root.remapUpperInput
+            editUpperFactor = root.remapUpperFactor
+            curveCanvas.requestPaint()
+        }
+        onEditLowerInputChanged: curveCanvas.requestPaint()
+        onEditLowerFactorChanged: curveCanvas.requestPaint()
+        onEditUpperInputChanged: curveCanvas.requestPaint()
+        onEditUpperFactorChanged: curveCanvas.requestPaint()
+        background: Rectangle {
+            radius: 10
+            color: root.darkTheme ? "#151C27" : "#FFFFFF"
+            border.color: root.darkTheme ? "#303C4E" : "#CDD6E1"
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("ENABLED"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                CompactToggle {
+                    checked: root.remapEnabled
+                    onToggled: root.controller.set_axis_remap_enabled(root.axisIndex, checked)
+                }
+            }
+            Label {
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("X: current axis input  ·  Y: retained output")
+                color: root.mutedText
+                font.pixelSize: 9
+            }
+            Item {
+                id: curveGraph
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 210
+                Layout.preferredHeight: 146
+                opacity: root.remapEnabled ? 1.0 : 0.45
+                readonly property real plotLeft: 20
+                readonly property real plotRight: width - 20
+                readonly property real plotTop: 14
+                readonly property real plotBottom: height - 24
+                readonly property real plotHeight: plotBottom - plotTop
+                readonly property real plotWidth: plotRight - plotLeft
+
+                Canvas {
+                    id: curveCanvas
+                    anchors.fill: parent
+                    onWidthChanged: requestPaint()
+                    onHeightChanged: requestPaint()
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        const graph = parent
+                        ctx.strokeStyle = root.darkTheme ? "#2A3545" : "#E1E7EE"
+                        ctx.lineWidth = 1
+                        for (let step = 0; step <= 4; ++step) {
+                            const x = graph.plotLeft + graph.plotWidth * step / 4
+                            const y = graph.plotTop + graph.plotHeight * step / 4
+                            ctx.beginPath(); ctx.moveTo(x, graph.plotTop); ctx.lineTo(x, graph.plotBottom); ctx.stroke()
+                            ctx.beginPath(); ctx.moveTo(graph.plotLeft, y); ctx.lineTo(graph.plotRight, y); ctx.stroke()
+                        }
+                        ctx.strokeStyle = root.darkTheme ? "#64748B" : "#8290A3"
+                        ctx.strokeRect(graph.plotLeft, graph.plotTop, graph.plotWidth, graph.plotHeight)
+                        ctx.strokeStyle = root.remapEnabled ? root.enabledGreen : root.accent
+                        ctx.lineWidth = 2.2
+                        ctx.lineCap = "round"
+                        const lowerX = graph.plotLeft + remapPopup.editLowerInput * graph.plotWidth
+                        const lowerY = graph.plotBottom - remapPopup.editLowerFactor * graph.plotHeight
+                        const upperX = graph.plotLeft + remapPopup.editUpperInput * graph.plotWidth
+                        const upperY = graph.plotBottom - remapPopup.editUpperFactor * graph.plotHeight
+                        ctx.beginPath()
+                        ctx.moveTo(graph.plotLeft, lowerY)
+                        ctx.lineTo(lowerX, lowerY)
+                        ctx.lineTo(upperX, upperY)
+                        ctx.lineTo(graph.plotRight, upperY)
+                        ctx.stroke()
+                    }
+                    Connections {
+                        target: root
+                        function onOutputSettingsChanged() { curveCanvas.requestPaint() }
+                    }
+                }
+                Rectangle {
+                    id: lowerHandle
+                    width: 15; height: 15; radius: 8
+                    x: parent.plotLeft + remapPopup.editLowerInput * parent.plotWidth - width / 2
+                    y: parent.plotBottom - remapPopup.editLowerFactor * parent.plotHeight - height / 2
+                    color: root.remapEnabled ? root.enabledGreen : root.secondaryText
+                    border.width: 2; border.color: root.darkTheme ? "#151C27" : "#FFFFFF"
+                    scale: lowerArea.pressed ? 1.18 : lowerArea.containsMouse ? 1.08 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 90 } }
+                    MouseArea {
+                        id: lowerArea
+                        anchors.centerIn: parent
+                        width: 34; height: 34
+                        enabled: root.remapEnabled
+                        hoverEnabled: true
+                        cursorShape: Qt.SizeAllCursor
+                        onPositionChanged: function(mouse) {
+                            if (!pressed) return
+                            const point = mapToItem(curveGraph, mouse.x, mouse.y)
+                            remapPopup.editLowerInput = Math.max(0, Math.min(remapPopup.editUpperInput - 0.01,
+                                (point.x - curveGraph.plotLeft) / curveGraph.plotWidth))
+                            remapPopup.editLowerFactor = Math.max(0, Math.min(1,
+                                1 - (point.y - curveGraph.plotTop) / curveGraph.plotHeight))
+                        }
+                        onReleased: remapPopup.saveCurve()
+                    }
+                }
+                Rectangle {
+                    id: upperHandle
+                    width: 15; height: 15; radius: 8
+                    x: parent.plotLeft + remapPopup.editUpperInput * parent.plotWidth - width / 2
+                    y: parent.plotBottom - remapPopup.editUpperFactor * parent.plotHeight - height / 2
+                    color: root.remapEnabled ? root.enabledGreen : root.secondaryText
+                    border.width: 2; border.color: root.darkTheme ? "#151C27" : "#FFFFFF"
+                    scale: upperArea.pressed ? 1.18 : upperArea.containsMouse ? 1.08 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 90 } }
+                    MouseArea {
+                        id: upperArea
+                        anchors.centerIn: parent
+                        width: 34; height: 34
+                        enabled: root.remapEnabled
+                        hoverEnabled: true
+                        cursorShape: Qt.SizeAllCursor
+                        onPositionChanged: function(mouse) {
+                            if (!pressed) return
+                            const point = mapToItem(curveGraph, mouse.x, mouse.y)
+                            remapPopup.editUpperInput = Math.min(1, Math.max(remapPopup.editLowerInput + 0.01,
+                                (point.x - curveGraph.plotLeft) / curveGraph.plotWidth))
+                            remapPopup.editUpperFactor = Math.max(0, Math.min(1,
+                                1 - (point.y - curveGraph.plotTop) / curveGraph.plotHeight))
+                        }
+                        onReleased: remapPopup.saveCurve()
+                    }
+                }
+                Rectangle {
+                    width: 9; height: 9; radius: 5
+                    x: parent.plotLeft + root.remapInputValue * parent.plotWidth - width / 2
+                    y: parent.plotBottom - remapPopup.curveFactor(root.remapInputValue) * parent.plotHeight - height / 2
+                    color: root.darkTheme ? "#151C27" : "#FFFFFF"
+                    border.width: 2
+                    border.color: root.remapEnabled ? root.enabledGreen : root.secondaryText
+                }
+                Label {
+                    x: Math.max(0, Math.min(parent.width - width, lowerHandle.x - width / 2 + lowerHandle.width / 2))
+                    y: lowerHandle.y < 18 ? lowerHandle.y + 18 : lowerHandle.y - 14
+                    text: "(" + Math.round(remapPopup.editLowerInput * 100) + "%, " + Math.round(remapPopup.editLowerFactor * 100) + "%)"
+                    color: root.secondaryText; font.pixelSize: 8
+                }
+                Label {
+                    x: Math.max(0, Math.min(parent.width - width, upperHandle.x - width / 2 + upperHandle.width / 2))
+                    y: upperHandle.y < 18 ? upperHandle.y + 18 : upperHandle.y - 14
+                    text: "(" + Math.round(remapPopup.editUpperInput * 100) + "%, " + Math.round(remapPopup.editUpperFactor * 100) + "%)"
+                    color: root.secondaryText; font.pixelSize: 8
+                }
+                Label { x: 2; y: parent.plotTop - height / 2; text: "100"; color: root.mutedText; font.pixelSize: 7 }
+                Label { x: 7; y: parent.plotBottom - height / 2; text: "0"; color: root.mutedText; font.pixelSize: 7 }
+                Label { x: parent.plotLeft - width / 2; anchors.bottom: parent.bottom; text: "0%"; color: root.mutedText; font.pixelSize: 8 }
+                Label { x: parent.plotRight - width / 2; anchors.bottom: parent.bottom; text: "100%"; color: root.mutedText; font.pixelSize: 8 }
+            }
+            RowLayout {
+                Layout.fillWidth: true; enabled: root.remapEnabled
+                Label { text: qsTr("MODE"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                RowLayout {
+                    Layout.preferredWidth: 112; spacing: 2
+                    Repeater {
+                        model: [{ label: qsTr("Value"), value: "value" }, { label: qsTr("Speed"), value: "speed" }]
+                        delegate: Button {
+                            id: modeChoice
+                            required property var modelData
+                            readonly property bool selected: root.remapMode === modelData.value
+                            Layout.fillWidth: true; Layout.preferredHeight: 27
+                            text: modelData.label
+                            onClicked: root.controller.set_axis_remap_mode(root.axisIndex, modelData.value)
+                            background: Rectangle {
+                                radius: 6
+                                color: modeChoice.selected
+                                       ? (root.darkTheme ? "#253651" : "#DDE7F5")
+                                       : (modeChoice.hovered ? root.valueSurface : "transparent")
+                                border.width: modeChoice.selected ? 1 : 0
+                                border.color: root.accent
+                            }
+                            contentItem: Label {
+                                text: modeChoice.text
+                                color: modeChoice.selected ? root.primaryText : root.mutedText
+                                font.pixelSize: 9
+                                horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: root.remapMode === "value"
+                enabled: root.remapEnabled
+                Label { text: qsTr("TARGET VALUE"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                StableStepper {
+                    Layout.preferredWidth: 112
+                    from: 0; to: 100; stepSize: 1
+                    value: Math.round(root.remapTarget * 100)
+                    decimals: 0
+                    suffixText: "%"
+                    numberWidth: 30
+                    suffixWidth: 10
+                    onValueModified: (nextValue) => root.controller.set_axis_remap_target(root.axisIndex, nextValue / 100)
                 }
             }
         }

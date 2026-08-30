@@ -1,5 +1,6 @@
 #include "motion_bridge/functional_target_selector.hpp"
 #include "motion_bridge/motion_engine.hpp"
+#include "motion_bridge/output_signal_processor.hpp"
 #include "motion_bridge/tcode.hpp"
 
 #include <cassert>
@@ -26,7 +27,12 @@ MotionFrame orthogonal_frame(std::chrono::microseconds time = std::chrono::micro
     return {"motion-frame/v1", "fallen-doll", 1, time, true, "Test", "vaginal", {reference, target}};
 }
 
-void require_close(const double actual, const double expected) { assert(std::abs(actual - expected) < 1e-6); }
+void require_close(const double actual, const double expected) {
+    if (std::abs(actual - expected) >= 1e-6) {
+        std::cerr << "require_close failed: actual=" << actual << " expected=" << expected << '\n';
+        assert(false);
+    }
+}
 
 void test_contact_and_tcode() {
     MotionEngine engine;
@@ -85,6 +91,278 @@ void test_bilateral_contact_uses_reference_depth() {
     require_close(snapshot.raw_axes[0], 0.4);
     require_close(snapshot.raw_axes[4], 0.5);
     require_close(snapshot.raw_axes[5], 0.5);
+}
+
+void test_tcode_can_send_only_changed_axes_with_real_interval() {
+    Axes axes;
+    axes[0] = 1.0;
+    axes[3] = 0.25;
+    AxisMask included{};
+    included[0] = true;
+    included[3] = true;
+    assert(encode_tcode(axes, std::chrono::milliseconds{17}, included) == "L09999I017 R02500I017\n");
+    included.fill(false);
+    assert(encode_tcode(axes, std::chrono::milliseconds{17}, included).empty());
+}
+
+void test_output_soft_start_tracks_actual_command() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = true;
+    config.soft_start_for = std::chrono::milliseconds{600};
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+
+    require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.5);
+    require_close(processor.process(target, std::chrono::milliseconds{300}, true)[0], 0.75);
+    require_close(processor.process(target, std::chrono::milliseconds{600}, true)[0], 1.0);
+}
+
+void test_output_speed_limit_is_per_axis_and_time_based() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.speed_limit_enabled[0] = true;
+    config.speed_limit_enabled[1] = true;
+    config.max_speed_per_second[0] = 1.0;
+    config.max_speed_per_second[1] = 2.0;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    target[1] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto first = processor.process(target, std::chrono::milliseconds{0}, true);
+    require_close(first[0], 0.5);
+    require_close(first[1], 0.5);
+    const auto second = processor.process(target, std::chrono::milliseconds{100}, true);
+    require_close(second[0], 0.6);
+    require_close(second[1], 0.7);
+}
+
+void test_output_waits_for_live_motion_and_does_not_delay_safety_return() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.speed_limit_enabled.fill(true);
+    config.max_speed_per_second.fill(0.25);
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+
+    require_close(processor.process(target, std::chrono::milliseconds{200}, false)[0], 0.5);
+    (void)processor.process(target, std::chrono::milliseconds{200}, true);
+    Axes safety_target;
+    safety_target[0] = 0.25;
+    require_close(processor.process(safety_target, std::chrono::milliseconds{220}, false)[0], 0.25);
+}
+
+void test_output_speed_limit_only_affects_enabled_axes() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.speed_limit_enabled[0] = true;
+    config.max_speed_per_second[0] = 1.0;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    target[1] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto output = processor.process(target, std::chrono::milliseconds{0}, true);
+    require_close(output[0], 0.5);
+    require_close(output[1], 1.0);
+}
+
+void test_output_axis_disable_moves_only_selected_axis_to_safe_value() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.axis_output_enabled[0] = false;
+    config.axis_safe_value[0] = 0.2;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    target[1] = 0.2;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto output = processor.process(target, std::chrono::milliseconds{0}, true);
+    require_close(output[0], 0.2);
+    require_close(output[1], 0.2);
+}
+
+void test_output_waits_at_custom_safe_values_before_live_motion() {
+    OutputSignalConfig config;
+    config.axis_safe_value[0] = 0.3;
+    config.axis_safe_value[1] = 0.7;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    target[1] = 0.0;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto output = processor.process(target, std::chrono::milliseconds{100}, false);
+    require_close(output[0], 0.3);
+    require_close(output[1], 0.7);
+    const auto first_live = processor.process(target, std::chrono::milliseconds{100}, true);
+    require_close(first_live[0], 0.3);
+    require_close(first_live[1], 0.7);
+}
+
+void test_output_axis_disable_obeys_its_speed_limit() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.speed_limit_enabled[0] = true;
+    config.max_speed_per_second[0] = 1.0;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+    for (int tick = 0; tick <= 5; ++tick) {
+        (void)processor.process(target, std::chrono::milliseconds{tick * 100}, true);
+    }
+    require_close(processor.current()[0], 1.0);
+
+    config.axis_output_enabled[0] = false;
+    processor.set_config(config);
+    require_close(processor.process(target, std::chrono::milliseconds{600}, true)[0], 0.9);
+}
+
+void test_output_disabled_axis_stays_safe_during_stream_return() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.axis_output_enabled[0] = false;
+    config.axis_safe_value[0] = 0.2;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+    require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.2);
+
+    Axes returning;
+    returning[0] = 0.8;
+    require_close(processor.process(returning, std::chrono::milliseconds{100}, false)[0], 0.2);
+}
+
+void test_output_value_remap_supports_zero_and_one_factors() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    auto& remap = config.remap[0];
+    remap.enabled = true;
+    remap.target_value = 0.25;
+    remap.lower_factor = 0.0;
+    remap.upper_factor = 0.0;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 0.9;
+    processor.arm(std::chrono::milliseconds{0});
+    require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.25);
+
+    remap.lower_factor = 1.0;
+    remap.upper_factor = 1.0;
+    processor.set_config(config);
+    require_close(processor.process(target, std::chrono::milliseconds{20}, true)[0], 0.9);
+}
+
+void test_output_speed_remap_blends_from_current_output() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    auto& remap = config.remap[0];
+    remap.enabled = true;
+    remap.mode = SignalRemapMode::Speed;
+    remap.lower_factor = 0.5;
+    remap.upper_factor = 0.5;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
+    processor.arm(std::chrono::milliseconds{0});
+
+    require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.53125);
+}
+
+void test_output_remap_holds_endpoints_and_interpolates_between_them() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    for (std::size_t index = 0; index < 3; ++index) {
+        auto& remap = config.remap[index];
+        remap.enabled = true;
+        remap.target_value = 0.0;
+        remap.lower_input = 0.25;
+        remap.lower_factor = 0.8;
+        remap.upper_input = 0.75;
+        remap.upper_factor = 0.2;
+    }
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 0.1;
+    target[1] = 0.5;
+    target[2] = 0.9;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto output = processor.process(target, std::chrono::milliseconds{0}, true);
+    require_close(output[0], 0.08);
+    require_close(output[1], 0.25);
+    require_close(output[2], 0.18);
+}
+
+void test_output_remap_x_coordinates_change_transition_location() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    auto& remap = config.remap[0];
+    remap.enabled = true;
+    remap.target_value = 0.0;
+    remap.lower_input = 0.2;
+    remap.lower_factor = 1.0;
+    remap.upper_input = 0.4;
+    remap.upper_factor = 0.0;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 0.25;
+    processor.arm(std::chrono::milliseconds{0});
+    require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.1875);
+
+    remap.lower_input = 0.0;
+    remap.upper_input = 0.1;
+    processor.set_config(config);
+    require_close(processor.process(target, std::chrono::milliseconds{20}, true)[0], 0.0);
+}
+
+void test_output_remap_uses_each_axis_own_pre_remap_input() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    for (std::size_t index = 0; index < 2; ++index) {
+        auto& remap = config.remap[index];
+        remap.enabled = true;
+        remap.target_value = 0.0;
+        remap.lower_factor = 0.0;
+        remap.upper_factor = 1.0;
+    }
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 0.2;
+    target[1] = 0.8;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto output = processor.process(target, std::chrono::milliseconds{0}, true);
+    require_close(output[0], 0.04);
+    require_close(output[1], 0.64);
+}
+
+void test_output_remap_normalizes_control_points() {
+    OutputSignalConfig config;
+    auto& reversed = config.remap[0];
+    reversed.lower_input = 1.2;
+    reversed.lower_factor = -1.0;
+    reversed.upper_input = -0.2;
+    reversed.upper_factor = 2.0;
+    config.remap[1].lower_input = 0.5;
+    config.remap[1].upper_input = 0.5;
+    OutputSignalProcessor processor(config);
+
+    const auto& normalized = processor.config();
+    require_close(normalized.remap[0].lower_input, 0.0);
+    require_close(normalized.remap[0].lower_factor, 1.0);
+    require_close(normalized.remap[0].upper_input, 1.0);
+    require_close(normalized.remap[0].upper_factor, 0.0);
+    assert(normalized.remap[1].upper_input - normalized.remap[1].lower_input >= 0.01 - 1e-9);
 }
 
 void test_direct_profile_uses_reference_length_and_axis_mask() {
@@ -213,6 +491,89 @@ void test_pitch_crosses_signed_angle_seam_without_output_jump() {
     assert(std::abs(snapshot.raw_axes[5] - 0.5) < 0.06);
 }
 
+void test_target_contact_frame_replaces_only_rotation_basis() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    auto& target = frame.participants[1];
+    target.bones.emplace("M_Clit", pose("M_Clit", {0, 0.5, 1.0}));
+    target.bones.emplace("L_Labia", pose("L_Labia", {-1.0, 0.5, 0}));
+    target.bones.emplace("R_Labia", pose("R_Labia", {1.0, 0.5, 0}));
+    frame.target_frame = TargetContactFrame{
+        "plane_normal", "M_Gen", "M_Gen", "M_Clit", "L_Labia", "R_Labia"};
+
+    const auto snapshot = engine.process(frame);
+    assert(snapshot.contact.target_mode == "target_contact_frame");
+    // The frame changes only R0/R1/R2. Contact position and translations are
+    // still sourced from the original selected M_Gen point.
+    require_close(snapshot.raw_axes[0], 1.0);
+    require_close(snapshot.raw_axes[1], 0.5);
+    require_close(snapshot.raw_axes[2], 0.5);
+}
+
+void test_target_plane_intersection_drives_translation_axes() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.l0_reference_length = true;
+    auto& target = frame.participants[1];
+    // The entrance point is offset from the Reference axis while the nearby
+    // landmarks tilt its plane. The resulting line-plane intersection is
+    // deeper than the legacy axial projection and has a lateral residual.
+    target.bones["M_Gen"].position = {0.03, 0.5, 0};
+    target.bones.emplace("M_Clit", pose("M_Clit", {0.03, 0.6, 0.1}));
+    target.bones.emplace("L_Labia", pose("L_Labia", {-0.02, 0.5, -0.02}));
+    target.bones.emplace("R_Labia", pose("R_Labia", {0.08, 0.5, 0.02}));
+    frame.target_frame = TargetContactFrame{
+        "plane_intersection", "M_Gen", "M_Gen", "M_Clit", "L_Labia", "R_Labia"};
+
+    const auto snapshot = engine.process(frame);
+    assert(snapshot.contact.target_mode == "target_plane_blended");
+    const auto alignment = 0.01 / std::sqrt(0.004 * 0.004 + 0.01 * 0.01 + 0.01 * 0.01);
+    const auto blend_position = (alignment - 0.25) / (0.75 - 0.25);
+    const auto blend = blend_position * blend_position * (3.0 - 2.0 * blend_position);
+    const auto expected_axial = 0.5 + 0.012 * blend;
+    require_close(snapshot.contact.axial_meters, expected_axial);
+    require_close(snapshot.contact.radial_meters, std::sqrt(0.03 * 0.03 + std::pow(0.5 - expected_axial, 2)));
+    require_close(snapshot.raw_axes[0], expected_axial);
+    require_close(snapshot.raw_axes[1], 0.5);
+    require_close(snapshot.raw_axes[2], 0.4);
+}
+
+void test_target_plane_intersection_falls_back_when_parallel() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.l0_reference_length = true;
+    auto& target = frame.participants[1];
+    // This target plane has a +Z normal while the Reference travels along +Y.
+    // Their intersection is undefined, so the legacy single-point translation
+    // must remain available without invalidating the motion frame.
+    target.bones.emplace("M_Clit", pose("M_Clit", {0, 1.5, 0}));
+    target.bones.emplace("L_Labia", pose("L_Labia", {-1.0, 0.5, 0}));
+    target.bones.emplace("R_Labia", pose("R_Labia", {1.0, 0.5, 0}));
+    frame.target_frame = TargetContactFrame{
+        "plane_intersection", "M_Gen", "M_Gen", "M_Clit", "L_Labia", "R_Labia"};
+
+    const auto snapshot = engine.process(frame);
+    assert(snapshot.contact.target_mode == "target_plane_fallback");
+    require_close(snapshot.raw_axes[0], 0.5);
+    require_close(snapshot.raw_axes[1], 0.5);
+    require_close(snapshot.raw_axes[2], 0.5);
+}
+
+void test_selector_resolves_frame_for_locked_functional_bone() {
+    FunctionalTargetSelector selector;
+    auto frame = orthogonal_frame();
+    frame.action_id = "HandAction";
+    auto& target = frame.participants[1];
+    target.bones.erase("M_Gen");
+    target.bones.emplace("R_Hand", pose("R_Hand", {0.2, 0.6, 0}));
+    target.target_frames.push_back(TargetContactFrame{
+        "plane_normal", "R_Hand", "R_Hand", "R_Middle_F01", "R_Pinky_F01", "R_Index_F01"});
+
+    assert(selector.alias_target(frame, {"R_Hand"}));
+    assert(frame.target_frame.has_value());
+    assert(frame.target_frame->source_bone == "R_Hand");
+}
+
 void test_functional_target_priority_stays_locked_during_an_action() {
     FunctionalTargetSelector selector;
     auto frame = orthogonal_frame();
@@ -296,6 +657,21 @@ void test_functional_target_uses_contact_pair_for_selected_reference() {
 
 int main() {
     test_contact_and_tcode();
+    test_tcode_can_send_only_changed_axes_with_real_interval();
+    test_output_soft_start_tracks_actual_command();
+    test_output_speed_limit_is_per_axis_and_time_based();
+    test_output_waits_for_live_motion_and_does_not_delay_safety_return();
+    test_output_speed_limit_only_affects_enabled_axes();
+    test_output_axis_disable_moves_only_selected_axis_to_safe_value();
+    test_output_waits_at_custom_safe_values_before_live_motion();
+    test_output_axis_disable_obeys_its_speed_limit();
+    test_output_disabled_axis_stays_safe_during_stream_return();
+    test_output_value_remap_supports_zero_and_one_factors();
+    test_output_speed_remap_blends_from_current_output();
+    test_output_remap_holds_endpoints_and_interpolates_between_them();
+    test_output_remap_x_coordinates_change_transition_location();
+    test_output_remap_uses_each_axis_own_pre_remap_input();
+    test_output_remap_normalizes_control_points();
     test_gain_scales_output_travel();
     test_hold_and_return();
     test_bilateral_contact_uses_reference_depth();
@@ -307,6 +683,10 @@ int main() {
     test_profile_plane_uses_native_nonhuman_landmarks();
     test_twist_remains_relative_when_reference_crosses_a_turn();
     test_pitch_crosses_signed_angle_seam_without_output_jump();
+    test_target_contact_frame_replaces_only_rotation_basis();
+    test_target_plane_intersection_drives_translation_axes();
+    test_target_plane_intersection_falls_back_when_parallel();
+    test_selector_resolves_frame_for_locked_functional_bone();
     test_functional_target_priority_stays_locked_during_an_action();
     test_functional_target_releases_only_after_missing_grace();
     test_functional_target_honours_explicit_reference_selection();

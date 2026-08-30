@@ -74,6 +74,28 @@ std::vector<std::string> contact_target_candidates(const QStringList& confirmed_
     return candidates;
 }
 
+std::vector<TargetContactFrame> target_contact_frames(const QJsonValue& value) {
+    std::vector<TargetContactFrame> result;
+    for (const auto& raw_value : value.toArray()) {
+        const auto raw = raw_value.toObject();
+        TargetContactFrame frame{
+            raw.value("mode").toString().trimmed().toStdString(),
+            raw.value("sourceBone").toString().trimmed().toStdString(),
+            raw.value("originBone").toString().trimmed().toStdString(),
+            raw.value("forwardBone").toString().trimmed().toStdString(),
+            raw.value("leftBone").toString().trimmed().toStdString(),
+            raw.value("rightBone").toString().trimmed().toStdString(),
+            raw.value("translationMode").toString().trimmed().toStdString(),
+        };
+        if ((frame.mode == "plane_normal" || frame.mode == "axis_tangent" || frame.mode == "plane_intersection")
+            && !frame.source_bone.empty() && !frame.origin_bone.empty()
+            && !frame.forward_bone.empty() && !frame.left_bone.empty() && !frame.right_bone.empty()) {
+            result.push_back(std::move(frame));
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 FallenDollInput::FallenDollInput(QObject* parent) : QObject(parent) {
@@ -263,6 +285,7 @@ void FallenDollInput::consume_line(const QByteArray& line) {
     participant.skeleton_id = packet.value("modelName").toString().toStdString();
     participant.role = trailer.value("role").toString().toStdString();
     participant.participant_tag = trailer.value("participantTag").toString().toStdString();
+    participant.target_frames = target_contact_frames(trailer.value("targetFrames"));
     for (const auto& raw_bone_name : trailer.value("contactBones").toArray()) {
         const auto bone_name = raw_bone_name.toString();
         if (!bone_name.isEmpty() && !pending_confirmed_target_bones_.contains(bone_name)) {
@@ -332,6 +355,7 @@ void FallenDollInput::consume_motion_frame(const QJsonObject& packet) {
         participant.role = raw.value("role").toString().toStdString();
         participant.skeleton_id = raw.value("skeletonId").toString().toStdString();
         participant.participant_tag = raw.value("participantTag").toString().toStdString();
+        participant.target_frames = target_contact_frames(raw.value("targetFrames"));
         for (const auto& raw_bone : raw.value("bones").toArray()) {
             const auto bone = raw_bone.toObject();
             const auto name = bone.value("name").toString();

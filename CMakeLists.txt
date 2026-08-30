@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MotionBridge VERSION 0.1.3 LANGUAGES CXX)
+project(MotionBridge VERSION 0.1.4 LANGUAGES CXX)
 
 option(MOTION_BRIDGE_BUILD_GUI "Build the Qt Quick desktop application" ON)
 option(MOTION_BRIDGE_BUILD_TESTS "Build core regression tests" ON)
@@ -12,6 +12,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(motion_bridge_core
     src/core/functional_target_selector.cpp
     src/core/motion_engine.cpp
+    src/core/output_signal_processor.cpp
     src/core/tcode.cpp
 )
 target_include_directories(motion_bridge_core PUBLIC include)

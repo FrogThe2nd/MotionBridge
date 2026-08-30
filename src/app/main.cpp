@@ -9,6 +9,8 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <qqml.h>
 
 #ifdef Q_OS_WIN
@@ -64,6 +66,10 @@ int main(int argc, char* argv[]) {
     qInstallMessageHandler(startup_message_handler);
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     QGuiApplication app(argc, argv);
+    // Repeated crash dumps on this Windows installation fail inside dxgi.dll
+    // from Qt Quick's D3D rendering path. OpenGL is fully supported by both
+    // Qt Quick and Qt Quick 3D and avoids that unstable system code path.
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QCoreApplication::setOrganizationName("Motion Bridge");
     QCoreApplication::setApplicationName("Motion Bridge");
     QCoreApplication::setOrganizationDomain("motionbridge.local");

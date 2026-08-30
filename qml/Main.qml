@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -365,6 +367,55 @@ ApplicationWindow {
         }
     }
 
+    component MiniToggle: AbstractButton {
+        id: toggle
+        checkable: true
+        implicitWidth: 30
+        implicitHeight: 16
+        contentItem: Item {}
+        background: Rectangle {
+            radius: height / 2
+            color: toggle.checked ? "#5C73F2" : (window.darkTheme ? "#2A3545" : "#CAD3DE")
+            border.width: 1
+            border.color: toggle.checked ? "#8092FF" : (window.darkTheme ? "#3A475A" : "#B8C3D0")
+            Rectangle {
+                width: 12; height: 12; radius: 6
+                y: 2
+                x: toggle.checked ? parent.width - width - 2 : 2
+                color: "#FFFFFF"
+                Behavior on x { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+            }
+        }
+    }
+
+    component ThinSlider: Slider {
+        id: thinSlider
+        Layout.preferredHeight: 18
+        background: Rectangle {
+            x: thinSlider.leftPadding
+            y: thinSlider.topPadding + thinSlider.availableHeight / 2 - height / 2
+            width: thinSlider.availableWidth
+            height: 4
+            radius: 2
+            color: window.darkTheme ? "#273241" : "#D5DDE7"
+            Rectangle {
+                width: thinSlider.visualPosition * parent.width
+                height: parent.height; radius: 2
+                color: window.primary
+                opacity: thinSlider.enabled ? 0.9 : 0.35
+            }
+        }
+        handle: Rectangle {
+            x: thinSlider.leftPadding + thinSlider.visualPosition * (thinSlider.availableWidth - width)
+            y: thinSlider.topPadding + thinSlider.availableHeight / 2 - height / 2
+            width: 14; height: 14; radius: 7
+            color: thinSlider.pressed ? window.primary : window.textPrimary
+            border.width: 2
+            border.color: window.primary
+            opacity: thinSlider.enabled ? 1.0 : 0.45
+        }
+    }
+
     component ModeButton: Button {
         required property string modeName
         required property string label
@@ -415,6 +466,8 @@ ApplicationWindow {
             border.color: portControl.activeFocus ? "#596FE3" : window.outline
         }
         delegate: ItemDelegate {
+            required property int index
+            required property var modelData
             width: portControl.width - 12
             height: 34
             text: modelData
@@ -445,7 +498,7 @@ ApplicationWindow {
         property string unavailableText: qsTr("Automatic until a live frame arrives")
         signal participantChosen(string key)
         Layout.fillWidth: true
-        Layout.preferredHeight: 38
+        Layout.preferredHeight: 32
         model: choices
         textRole: "label"
         valueRole: "key"
@@ -474,12 +527,14 @@ ApplicationWindow {
             border.color: participantControl.activeFocus ? "#596FE3" : window.outline
         }
         delegate: ItemDelegate {
+            id: participantOption
+            required property int index
             width: participantControl.width - 12
             height: 34
             text: participantControl.textAt(index)
             highlighted: participantControl.highlightedIndex === index
-            background: Rectangle { radius: 8; color: parent.highlighted ? window.activeSurface : parent.hovered ? window.hoverSurface : "transparent" }
-            contentItem: Label { text: parent.text; color: window.textPrimary; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; leftPadding: 7 }
+            background: Rectangle { radius: 8; color: participantOption.highlighted ? window.activeSurface : participantOption.hovered ? window.hoverSurface : "transparent" }
+            contentItem: Label { text: participantOption.text; color: window.textPrimary; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; leftPadding: 7 }
         }
         popup: Popup {
             y: participantControl.height + 4
@@ -644,11 +699,20 @@ ApplicationWindow {
                 clip: true
                 color: window.darkTheme ? "#090E16" : "#EDF2F7"
 
-                ColumnLayout {
-                    id: expandedContent
-                    x: 20; y: 18
-                    width: parent.width - 40
-                    spacing: 14
+                ScrollView {
+                    id: expandedScroll
+                    anchors.fill: parent
+                    clip: true
+                    contentWidth: availableWidth
+                    contentHeight: expandedContent.implicitHeight + 24
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                    ColumnLayout {
+                        id: expandedContent
+                        x: 16; y: 12
+                        width: expandedScroll.availableWidth - 32
+                        spacing: 10
 
                     RowLayout {
                         visible: window.connectionExpanded
@@ -756,27 +820,78 @@ ApplicationWindow {
                     Rectangle {
                         visible: window.tuningExpanded
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 72
-                        radius: 14
+                        Layout.preferredHeight: 64
+                        radius: 12
                         color: window.panel
                         border.color: window.outline
                         RowLayout {
-                            anchors.fill: parent; anchors.margins: 12; spacing: 12
+                            anchors.fill: parent; anchors.margins: 10; spacing: 10
                             ColumnLayout {
-                                Layout.preferredWidth: 212; spacing: 2
-                                Label { text: qsTr("Participant routing"); color: window.textPrimary; font.pixelSize: 12; font.bold: true }
-                                Label { text: qsTr("Choose the motion source; target comes from the game stream"); color: window.textMuted; font.pixelSize: 9; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                Layout.preferredWidth: 190; spacing: 1
+                                Label { text: qsTr("Participant routing"); color: window.textPrimary; font.pixelSize: 11; font.bold: true }
+                                Label { text: qsTr("Choose the motion source; target comes from the game stream"); color: window.textMuted; font.pixelSize: 8; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                             }
                             ColumnLayout {
-                                Layout.minimumWidth: 300
-                                Layout.preferredWidth: 360
-                                Layout.maximumWidth: 360
-                                spacing: 4
+                                Layout.minimumWidth: 260
+                                Layout.preferredWidth: 330
+                                Layout.maximumWidth: 330
+                                spacing: 2
                                 Label { text: qsTr("REFERENCE PARTICIPANT"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
                                 ParticipantCombo {
                                     choices: companion.referenceParticipants
                                     selectedKey: companion.referenceParticipant
-                                    onParticipantChosen: companion.set_reference_participant(key)
+                                    onParticipantChosen: (key) => companion.set_reference_participant(key)
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+                    Rectangle {
+                        visible: window.tuningExpanded
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 62
+                        radius: 12
+                        color: window.panel
+                        border.color: window.outline
+                        RowLayout {
+                            anchors.fill: parent; anchors.margins: 10; spacing: 18
+                            ColumnLayout {
+                                Layout.preferredWidth: 170; spacing: 1
+                                Label { text: qsTr("Output processing"); color: window.textPrimary; font.pixelSize: 11; font.bold: true }
+                                Label { text: qsTr("Fixed cadence · device-side protection"); color: window.textMuted; font.pixelSize: 8 }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true; Layout.preferredWidth: 300; spacing: 3
+                                RowLayout {
+                                    Layout.preferredHeight: 16
+                                    Label { text: qsTr("OUTPUT RATE"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
+                                    Item { Layout.fillWidth: true }
+                                    Label { text: companion.outputRateHz + " Hz"; color: window.textSecondary; font.pixelSize: 9; font.family: "Cascadia Mono" }
+                                }
+                                ThinSlider {
+                                    id: outputRateSlider
+                                    Layout.fillWidth: true
+                                    from: 20; to: 100; stepSize: 5
+                                    value: companion.outputRateHz
+                                    onPressedChanged: if (!pressed) companion.set_output_rate_hz(Math.round(value))
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true; Layout.preferredWidth: 330; spacing: 3
+                                RowLayout {
+                                    Layout.preferredHeight: 16
+                                    Label { text: qsTr("SOFT START"); color: window.textSecondary; font.pixelSize: 9; font.bold: true }
+                                    MiniToggle { checked: companion.softStartEnabled; onToggled: companion.set_soft_start_enabled(checked) }
+                                    Item { Layout.fillWidth: true }
+                                    Label { text: companion.softStartDurationMs + " ms"; color: window.textMuted; font.pixelSize: 9; font.family: "Cascadia Mono" }
+                                }
+                                ThinSlider {
+                                    id: softStartSlider
+                                    Layout.fillWidth: true
+                                    enabled: companion.softStartEnabled
+                                    from: 0; to: 3000; stepSize: 100
+                                    value: companion.softStartDurationMs
+                                    onPressedChanged: if (!pressed) companion.set_soft_start_duration_ms(Math.round(value))
                                 }
                             }
                             Item { Layout.fillWidth: true }
@@ -786,15 +901,16 @@ ApplicationWindow {
                         visible: window.tuningExpanded
                         Layout.fillWidth: true
                         columns: width > 940 ? 3 : 2
-                        columnSpacing: 11; rowSpacing: 11
-                        AxisCard { darkTheme: window.darkTheme; axisIndex: 0; axisName: qsTr("L0  STROKE"); axisValue: companion.deviceAxes[0]; gain: companion.axisGains[0]; outputMinimum: companion.axisMinimums[0]; outputMaximum: companion.axisMaximums[0] }
-                        AxisCard { darkTheme: window.darkTheme; axisIndex: 1; axisName: qsTr("L1  SURGE"); axisValue: companion.deviceAxes[1]; gain: companion.axisGains[1]; outputMinimum: companion.axisMinimums[1]; outputMaximum: companion.axisMaximums[1] }
-                        AxisCard { darkTheme: window.darkTheme; axisIndex: 2; axisName: qsTr("L2  SWAY"); axisValue: companion.deviceAxes[2]; gain: companion.axisGains[2]; outputMinimum: companion.axisMinimums[2]; outputMaximum: companion.axisMaximums[2] }
-                        AxisCard { darkTheme: window.darkTheme; axisIndex: 3; axisName: qsTr("R0  TWIST"); axisValue: companion.deviceAxes[3]; gain: companion.axisGains[3]; outputMinimum: companion.axisMinimums[3]; outputMaximum: companion.axisMaximums[3] }
-                        AxisCard { darkTheme: window.darkTheme; axisIndex: 4; axisName: qsTr("R1  ROLL"); axisValue: companion.deviceAxes[4]; gain: companion.axisGains[4]; outputMinimum: companion.axisMinimums[4]; outputMaximum: companion.axisMaximums[4] }
-                        AxisCard { darkTheme: window.darkTheme; axisIndex: 5; axisName: qsTr("R2  PITCH"); axisValue: companion.deviceAxes[5]; gain: companion.axisGains[5]; outputMinimum: companion.axisMinimums[5]; outputMaximum: companion.axisMaximums[5] }
+                        columnSpacing: 9; rowSpacing: 9
+                        AxisCard { controller: companion; darkTheme: window.darkTheme; axisIndex: 0; axisName: qsTr("L0  STROKE"); axisValue: companion.deviceAxes[0]; gain: companion.axisGains[0]; outputMinimum: companion.axisMinimums[0]; outputMaximum: companion.axisMaximums[0]; outputSettings: companion.axisOutputSettings[0] || ({}) }
+                        AxisCard { controller: companion; darkTheme: window.darkTheme; axisIndex: 1; axisName: qsTr("L1  SURGE"); axisValue: companion.deviceAxes[1]; gain: companion.axisGains[1]; outputMinimum: companion.axisMinimums[1]; outputMaximum: companion.axisMaximums[1]; outputSettings: companion.axisOutputSettings[1] || ({}) }
+                        AxisCard { controller: companion; darkTheme: window.darkTheme; axisIndex: 2; axisName: qsTr("L2  SWAY"); axisValue: companion.deviceAxes[2]; gain: companion.axisGains[2]; outputMinimum: companion.axisMinimums[2]; outputMaximum: companion.axisMaximums[2]; outputSettings: companion.axisOutputSettings[2] || ({}) }
+                        AxisCard { controller: companion; darkTheme: window.darkTheme; axisIndex: 3; axisName: qsTr("R0  TWIST"); axisValue: companion.deviceAxes[3]; gain: companion.axisGains[3]; outputMinimum: companion.axisMinimums[3]; outputMaximum: companion.axisMaximums[3]; outputSettings: companion.axisOutputSettings[3] || ({}) }
+                        AxisCard { controller: companion; darkTheme: window.darkTheme; axisIndex: 4; axisName: qsTr("R1  ROLL"); axisValue: companion.deviceAxes[4]; gain: companion.axisGains[4]; outputMinimum: companion.axisMinimums[4]; outputMaximum: companion.axisMaximums[4]; outputSettings: companion.axisOutputSettings[4] || ({}) }
+                        AxisCard { controller: companion; darkTheme: window.darkTheme; axisIndex: 5; axisName: qsTr("R2  PITCH"); axisValue: companion.deviceAxes[5]; gain: companion.axisGains[5]; outputMinimum: companion.axisMinimums[5]; outputMaximum: companion.axisMaximums[5]; outputSettings: companion.axisOutputSettings[5] || ({}) }
                     }
                     Item { Layout.preferredHeight: 4 }
+                    }
                 }
             }
         }

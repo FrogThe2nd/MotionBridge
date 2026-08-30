@@ -10,6 +10,13 @@ The Motion Bridge SR6 preview includes converted model geometry derived from
 licensed under the MIT License, Copyright (c) 2021 ayvajs. A copy of its
 license is included beside the packaged model assets.
 
+## MultiFunPlayer
+
+Motion Bridge's fixed-cadence output design was informed by
+[MultiFunPlayer](https://github.com/Yoooi0/MultiFunPlayer), which is licensed
+under the MIT License, Copyright (c) 2020 Yoooi. Motion Bridge uses its own
+C++/Qt implementation for the live game-stream pipeline.
+
 ## Game and device names
 
 Game, hardware, and product names belong to their respective owners. Their

@@ -7,6 +7,9 @@
 #include <QUdpSocket>
 #include <QWebSocket>
 
+#include <array>
+#include <chrono>
+
 class DeviceRouter final : public QObject {
     Q_OBJECT
 
@@ -22,7 +25,7 @@ public:
     void set_armed(bool armed);
     [[nodiscard]] Mode mode() const noexcept;
     [[nodiscard]] bool armed() const noexcept;
-    void send(const motion_bridge::Axes& axes);
+    void send(const motion_bridge::Axes& axes, std::chrono::milliseconds interval);
     void emergency_stop();
 
 signals:
@@ -34,8 +37,9 @@ private slots:
 
 private:
     void ensure_transport();
-    void send_tcode(const motion_bridge::Axes& axes);
+    void send_output(const motion_bridge::Axes& axes, std::chrono::milliseconds interval, bool force_full = false);
     void send_intiface_zero();
+    void reset_output_tracking();
 
     Mode mode_{Mode::None};
     bool armed_{};
@@ -48,4 +52,6 @@ private:
     QWebSocket* intiface_{};
     int intiface_request_id_{1};
     int intiface_device_index_{-1};
+    motion_bridge::Axes last_sent_axes_;
+    std::array<bool, 6> last_sent_valid_{};
 };

@@ -3,6 +3,7 @@
 #include "device_router.hpp"
 #include "fallen_doll_input.hpp"
 #include "motion_bridge/motion_engine.hpp"
+#include "motion_bridge/output_signal_processor.hpp"
 
 #include <QElapsedTimer>
 #include <QObject>
@@ -28,6 +29,18 @@ public slots:
     void set_intiface_url(const QString& url);
     void set_axis_gain(int axis, double value);
     void set_axis_range(int axis, double minimum, double maximum);
+    void set_output_rate_hz(int value);
+    void set_soft_start_enabled(bool enabled);
+    void set_soft_start_duration_ms(int value);
+    void set_axis_output_enabled(int axis, bool enabled);
+    void set_axis_safe_value(int axis, double value);
+    void set_axis_speed_limit_enabled(int axis, bool enabled);
+    void set_axis_speed_limit(int axis, double value);
+    void set_axis_remap_enabled(int axis, bool enabled);
+    void set_axis_remap_mode(int axis, const QString& mode);
+    void set_axis_remap_target(int axis, double value);
+    void set_axis_remap_curve(int axis, double lower_input, double lower_factor,
+                              double upper_input, double upper_factor);
     void set_stream_path(const QString& path);
     void set_theme(const QString& theme);
     void set_reference_participant(const QString& reference);
@@ -40,13 +53,15 @@ signals:
     void connection_settings_changed(const QString& usb_port, const QString& wifi_host, int wifi_port, const QString& intiface_url);
     void axis_gains_changed(const QVariantList& gains);
     void axis_ranges_changed(const QVariantList& minimums, const QVariantList& maximums);
+    void output_processing_settings_changed(int rate_hz, bool soft_start_enabled, int soft_start_duration_ms,
+                                            const QVariantList& axis_output_settings);
     void theme_changed(const QString& theme);
     void reference_participants_changed(const QVariantList& references);
     void reference_participant_changed(const QString& reference);
 
 private slots:
     void on_frame(motion_bridge::MotionFrame frame);
-    void on_heartbeat();
+    void on_output_tick();
 
 private:
     void load_settings();
@@ -55,6 +70,7 @@ private:
     void publish_connection_settings();
     void publish_axis_gains();
     void publish_axis_ranges();
+    void publish_output_processing_settings();
     void publish_participant_choices(const motion_bridge::MotionFrame& frame);
     void publish_reference_participant();
     void reset_participant_cache();
@@ -62,13 +78,17 @@ private:
     [[nodiscard]] std::chrono::microseconds now() const;
 
     motion_bridge::MotionEngine engine_;
+    motion_bridge::OutputSignalProcessor output_processor_;
     FallenDollInput* input_{};
     DeviceRouter* device_{};
     QElapsedTimer clock_;
-    QTimer* heartbeat_{};
+    QTimer* output_timer_{};
+    motion_bridge::EngineSnapshot target_snapshot_;
     motion_bridge::EngineSnapshot snapshot_;
     std::optional<motion_bridge::EngineSnapshot> last_ui_snapshot_;
     std::chrono::microseconds last_input_time_{};
+    std::chrono::microseconds last_output_time_{};
+    int output_rate_hz_{50};
     QString spool_path_;
     QString usb_port_;
     QString wifi_host_{"tcode.local"};

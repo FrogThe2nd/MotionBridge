@@ -2,6 +2,7 @@
 #include "motion_bridge_settings.hpp"
 
 #include <QDir>
+#include <QVariantMap>
 
 #include <algorithm>
 #include <cmath>
@@ -40,26 +41,41 @@ RealtimePipeline::RealtimePipeline(QObject* parent) : QObject(parent) {
     // their timers, sockets and file watcher with the pipeline as one unit.
     input_ = new FallenDollInput(this);
     device_ = new DeviceRouter(this);
-    heartbeat_ = new QTimer(this);
-    heartbeat_->setInterval(20);
+    output_timer_ = new QTimer(this);
+    output_timer_->setTimerType(Qt::PreciseTimer);
+    output_timer_->setInterval(20);
 }
 
 void RealtimePipeline::start() {
     clock_.start();
     load_settings();
+    // Signal processing also drives the axis cards and 3D preview. Keep it
+    // live independently of whether hardware output is currently armed.
+    output_processor_.arm(now());
     connect(input_, &FallenDollInput::frame_ready, this, &RealtimePipeline::on_frame);
     connect(input_, &FallenDollInput::connection_changed, this, [this](const bool connected, const QString& detail) { emit stream_status_changed(connected, detail); });
     connect(device_, &DeviceRouter::status_changed, this, [this](const QString& status, const bool) { emit output_status_changed(status, device_->armed(), mode_name(device_->mode())); });
-    connect(heartbeat_, &QTimer::timeout, this, &RealtimePipeline::on_heartbeat);
-    heartbeat_->start();
+    connect(output_timer_, &QTimer::timeout, this, &RealtimePipeline::on_output_tick);
+    output_timer_->start();
     input_->start();
     emit output_status_changed(device_->armed() ? tr("Output armed") : tr("Output disarmed"), device_->armed(), mode_name(device_->mode()));
 }
 
-void RealtimePipeline::stop() { heartbeat_->stop(); device_->emergency_stop(); }
-void RealtimePipeline::set_armed(const bool armed) { device_->set_armed(armed); save_settings(); }
+void RealtimePipeline::stop() { output_timer_->stop(); output_processor_.disarm(); device_->emergency_stop(); }
+void RealtimePipeline::set_armed(const bool armed) {
+    if (armed) {
+        const auto current = now();
+        output_processor_.arm(current);
+        last_output_time_ = current;
+    }
+    device_->set_armed(armed);
+    save_settings();
+}
 void RealtimePipeline::emergency_stop() { device_->emergency_stop(); }
-void RealtimePipeline::set_output_mode(const QString& mode) { device_->set_mode(parse_mode(mode)); save_settings(); }
+void RealtimePipeline::set_output_mode(const QString& mode) {
+    device_->set_mode(parse_mode(mode));
+    save_settings();
+}
 void RealtimePipeline::set_usb_port(const QString& port) { usb_port_ = port.trimmed(); device_->set_usb_port(usb_port_); auto settings = motion_bridge_settings(); settings.setValue("device/usbPort", usb_port_); publish_connection_settings(); }
 void RealtimePipeline::set_wifi_endpoint(const QString& host, const int port) { wifi_host_ = host.trimmed(); wifi_port_ = std::clamp(port, 1, 65535); device_->set_wifi_endpoint(wifi_host_, static_cast<quint16>(wifi_port_)); auto settings = motion_bridge_settings(); settings.setValue("device/wifiHost", wifi_host_); settings.setValue("device/wifiPort", wifi_port_); publish_connection_settings(); }
 void RealtimePipeline::set_intiface_url(const QString& url) { intiface_url_ = url.trimmed(); device_->set_intiface_url(QUrl(intiface_url_)); auto settings = motion_bridge_settings(); settings.setValue("device/intifaceUrl", intiface_url_); publish_connection_settings(); }
@@ -95,6 +111,151 @@ void RealtimePipeline::set_axis_range(const int axis, const double minimum, cons
     publish_axis_ranges();
 }
 
+void RealtimePipeline::set_output_rate_hz(const int value) {
+    const auto next = std::clamp(value, 20, 100);
+    if (output_rate_hz_ == next) return;
+    output_rate_hz_ = next;
+    output_timer_->setInterval(std::max(1, static_cast<int>(std::lround(1000.0 / output_rate_hz_))));
+    auto settings = motion_bridge_settings();
+    settings.setValue("output/rateHz", output_rate_hz_);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_soft_start_enabled(const bool enabled) {
+    auto config = output_processor_.config();
+    if (config.soft_start_enabled == enabled) return;
+    config.soft_start_enabled = enabled;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue("output/softStartEnabled", enabled);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_soft_start_duration_ms(const int value) {
+    auto config = output_processor_.config();
+    const auto next = std::chrono::milliseconds{std::clamp(value, 0, 3000)};
+    if (config.soft_start_for == next) return;
+    config.soft_start_for = next;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue("output/softStartDurationMs", static_cast<int>(next.count()));
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_output_enabled(const int axis, const bool enabled) {
+    if (axis < 0 || axis >= 6) return;
+    auto config = output_processor_.config();
+    auto& item = config.axis_output_enabled[static_cast<std::size_t>(axis)];
+    if (item == enabled) return;
+    item = enabled;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/axisOutputEnabled").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), enabled);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_safe_value(const int axis, const double value) {
+    if (axis < 0 || axis >= 6) return;
+    const auto next = std::clamp(value, 0.0, 1.0);
+    auto config = output_processor_.config();
+    auto& item = config.axis_safe_value[static_cast<std::size_t>(axis)];
+    if (std::abs(item - next) < 0.0001) return;
+    item = next;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/axisSafeValue").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), next);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_speed_limit_enabled(const int axis, const bool enabled) {
+    if (axis < 0 || axis >= 6) return;
+    auto config = output_processor_.config();
+    auto& item = config.speed_limit_enabled[static_cast<std::size_t>(axis)];
+    if (item == enabled) return;
+    item = enabled;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/speedLimitEnabled").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), enabled);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_speed_limit(const int axis, const double value) {
+    if (axis < 0 || axis >= 6) return;
+    auto config = output_processor_.config();
+    const auto next = std::clamp(value, 0.25, 10.0);
+    auto& speed = config.max_speed_per_second[static_cast<std::size_t>(axis)];
+    if (std::abs(speed - next) < 0.0001) return;
+    speed = next;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/maxSpeed").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), next);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_remap_enabled(const int axis, const bool enabled) {
+    if (axis < 0 || axis >= 6) return;
+    auto config = output_processor_.config();
+    auto& remap = config.remap[static_cast<std::size_t>(axis)];
+    if (remap.enabled == enabled) return;
+    remap.enabled = enabled;
+    output_processor_.set_config(config);
+    const auto actual = output_processor_.config().remap[static_cast<std::size_t>(axis)].enabled;
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/remapEnabled").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), actual);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_remap_mode(const int axis, const QString& mode) {
+    if (axis < 0 || axis >= 6) return;
+    const auto next = mode.compare("speed", Qt::CaseInsensitive) == 0 ? SignalRemapMode::Speed : SignalRemapMode::Value;
+    auto config = output_processor_.config();
+    auto& remap = config.remap[static_cast<std::size_t>(axis)];
+    if (remap.mode == next) return;
+    remap.mode = next;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/remapMode").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])),
+                      next == SignalRemapMode::Speed ? "speed" : "value");
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_remap_target(const int axis, const double value) {
+    if (axis < 0 || axis >= 6) return;
+    const auto next = std::clamp(value, 0.0, 1.0);
+    auto config = output_processor_.config();
+    auto& target = config.remap[static_cast<std::size_t>(axis)].target_value;
+    if (std::abs(target - next) < 0.0001) return;
+    target = next;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/remapTargetValue").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), next);
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_remap_curve(const int axis, const double lower_input, const double lower_factor,
+                                             const double upper_input, const double upper_factor) {
+    if (axis < 0 || axis >= 6) return;
+    auto config = output_processor_.config();
+    auto& remap = config.remap[static_cast<std::size_t>(axis)];
+    if (std::abs(remap.lower_input - lower_input) < 0.0001 &&
+        std::abs(remap.lower_factor - lower_factor) < 0.0001 &&
+        std::abs(remap.upper_input - upper_input) < 0.0001 &&
+        std::abs(remap.upper_factor - upper_factor) < 0.0001) return;
+    remap.lower_input = lower_input;
+    remap.lower_factor = lower_factor;
+    remap.upper_input = upper_input;
+    remap.upper_factor = upper_factor;
+    output_processor_.set_config(config);
+    const auto& actual = output_processor_.config().remap[static_cast<std::size_t>(axis)];
+    const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)]);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/remapLowerInput").arg(axis_name), actual.lower_input);
+    settings.setValue(QString("output/%1/remapLowerFactor").arg(axis_name), actual.lower_factor);
+    settings.setValue(QString("output/%1/remapUpperInput").arg(axis_name), actual.upper_input);
+    settings.setValue(QString("output/%1/remapUpperFactor").arg(axis_name), actual.upper_factor);
+    publish_output_processing_settings();
+}
+
 void RealtimePipeline::set_stream_path(const QString& path) {
     spool_path_ = path;
     input_->set_spool_path(path);
@@ -121,6 +282,7 @@ void RealtimePipeline::set_reference_participant(const QString& reference) {
     if (contact.reference_participant == next_reference) return;
     // Changing the source actor switches all six axes. Stop output first, then
     // require an explicit arm after a fresh frame confirms the new route.
+    output_processor_.arm(now());
     device_->emergency_stop();
     contact.reference_participant = next_reference;
     engine_.set_contact_config(contact);
@@ -143,16 +305,28 @@ void RealtimePipeline::on_frame(MotionFrame frame) {
     publish_participant_choices(frame);
     frame.monotonic_time = now();
     last_input_time_ = frame.monotonic_time;
-    snapshot_ = engine_.process(frame);
-    if (device_->armed()) device_->send(snapshot_.device_axes);
-    publish_snapshot();
+    // Consume every game frame so calibration/envelopes stay exact, but keep
+    // only the latest target for the fixed-rate device clock. File-system
+    // notifications may deliver several 20 ms frames in one batch and must
+    // never turn that batch into a burst of serial or socket writes.
+    target_snapshot_ = engine_.process(frame);
 }
 
-void RealtimePipeline::on_heartbeat() {
+void RealtimePipeline::on_output_tick() {
     const auto current = now();
-    if (current - last_input_time_ < std::chrono::milliseconds{25}) return;
-    snapshot_ = engine_.process_missing(current);
-    if (device_->armed()) device_->send(snapshot_.device_axes);
+    if (current - last_input_time_ >= std::chrono::milliseconds{25}) {
+        target_snapshot_ = engine_.process_missing(current);
+    }
+    snapshot_ = target_snapshot_;
+    const auto live_motion = snapshot_.state == MotionState::Active || snapshot_.state == MotionState::Holding;
+    snapshot_.device_axes = output_processor_.process(target_snapshot_.device_axes, current, live_motion);
+    if (device_->armed()) {
+        const auto nominal_ms = std::max(1, static_cast<int>(std::lround(1000.0 / output_rate_hz_)));
+        const auto elapsed_us = last_output_time_.count() > 0 ? (current - last_output_time_).count() : nominal_ms * 1000LL;
+        const auto interval_ms = std::clamp(static_cast<long long>(std::llround(static_cast<double>(elapsed_us) / 1000.0)), 1LL, 999LL);
+        device_->send(snapshot_.device_axes, std::chrono::milliseconds{interval_ms});
+    }
+    last_output_time_ = current;
     publish_snapshot();
 }
 
@@ -189,6 +363,39 @@ void RealtimePipeline::load_settings() {
     device_->set_usb_port(usb_port_);
     device_->set_wifi_endpoint(wifi_host_, static_cast<quint16>(std::clamp(wifi_port_, 1, 65535)));
     device_->set_intiface_url(QUrl(intiface_url_));
+    output_rate_hz_ = std::clamp(settings.value("output/rateHz", 50).toInt(), 20, 100);
+    output_timer_->setInterval(std::max(1, static_cast<int>(std::lround(1000.0 / output_rate_hz_))));
+    auto output_config = output_processor_.config();
+    output_config.soft_start_enabled = settings.value("output/softStartEnabled", true).toBool();
+    output_config.soft_start_for = std::chrono::milliseconds{
+        std::clamp(settings.value("output/softStartDurationMs", 600).toInt(), 0, 3000)};
+    const auto legacy_speed_enabled = settings.value("output/speedLimitEnabled", false).toBool();
+    for (int index = 0; index < 6; ++index) {
+        const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(index)]);
+        const auto prefix = QString("output/%1/").arg(axis_name);
+        output_config.axis_output_enabled[static_cast<std::size_t>(index)] =
+            settings.value(prefix + "axisOutputEnabled", true).toBool();
+        output_config.axis_safe_value[static_cast<std::size_t>(index)] =
+            settings.value(prefix + "axisSafeValue", 0.5).toDouble();
+        output_config.speed_limit_enabled[static_cast<std::size_t>(index)] =
+            settings.value(prefix + "speedLimitEnabled", legacy_speed_enabled).toBool();
+        output_config.max_speed_per_second[static_cast<std::size_t>(index)] =
+            std::clamp(settings.value(prefix + "maxSpeed", 4.0).toDouble(), 0.25, 10.0);
+        auto& remap = output_config.remap[static_cast<std::size_t>(index)];
+        remap.enabled = settings.value(prefix + "remapEnabled", false).toBool();
+        remap.mode = settings.value(prefix + "remapMode", "value").toString().compare("speed", Qt::CaseInsensitive) == 0
+            ? SignalRemapMode::Speed : SignalRemapMode::Value;
+        remap.target_value = settings.value(prefix + "remapTargetValue", 0.5).toDouble();
+        remap.lower_input = settings.value(prefix + "remapLowerInput", 0.0).toDouble();
+        remap.lower_factor = settings.value(
+            prefix + "remapLowerFactor",
+            settings.value(prefix + "remapFactorAtZero", 1.0)).toDouble();
+        remap.upper_input = settings.value(prefix + "remapUpperInput", 1.0).toDouble();
+        remap.upper_factor = settings.value(
+            prefix + "remapUpperFactor",
+            settings.value(prefix + "remapFactorAtOne", 0.0)).toDouble();
+    }
+    output_processor_.set_config(output_config);
     auto contact = engine_.contact_config();
     const auto contact_text = [&settings](const char* key, const std::string& fallback) { return settings.value(QString("contact/%1").arg(key), QString::fromStdString(fallback)).toString().toStdString(); };
     const auto contact_number = [&settings](const char* key, const double fallback) { return settings.value(QString("contact/%1").arg(key), fallback).toDouble(); };
@@ -219,6 +426,7 @@ void RealtimePipeline::load_settings() {
     publish_connection_settings();
     publish_axis_gains();
     publish_axis_ranges();
+    publish_output_processing_settings();
     publish_reference_participant();
     emit reference_participants_changed(reference_participants_);
     emit theme_changed(theme_);
@@ -243,6 +451,32 @@ void RealtimePipeline::publish_axis_ranges() {
         maximums.push_back(item.output_max);
     }
     emit axis_ranges_changed(minimums, maximums);
+}
+
+void RealtimePipeline::publish_output_processing_settings() {
+    QVariantList axis_settings;
+    const auto& config = output_processor_.config();
+    for (std::size_t index = 0; index < config.max_speed_per_second.size(); ++index) {
+        const auto& remap = config.remap[index];
+        axis_settings.push_back(QVariantMap{
+            {"axisEnabled", config.axis_output_enabled[index]},
+            {"safeValue", config.axis_safe_value[index]},
+            {"speedEnabled", config.speed_limit_enabled[index]},
+            {"maxSpeed", config.max_speed_per_second[index]},
+            {"remapEnabled", remap.enabled},
+            {"remapMode", remap.mode == SignalRemapMode::Speed ? "speed" : "value"},
+            {"targetValue", remap.target_value},
+            {"lowerInput", remap.lower_input},
+            {"lowerFactor", remap.lower_factor},
+            {"upperInput", remap.upper_input},
+            {"upperFactor", remap.upper_factor}
+        });
+    }
+    emit output_processing_settings_changed(
+        output_rate_hz_,
+        config.soft_start_enabled,
+        static_cast<int>(config.soft_start_for.count()),
+        axis_settings);
 }
 
 void RealtimePipeline::publish_participant_choices(const MotionFrame& frame) {

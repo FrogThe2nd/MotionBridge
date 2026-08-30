@@ -10,6 +10,7 @@ Motion Bridge has one real-time worker thread for file watching, motion calculat
 
 - Real-time L0/L1/L2/R0/R1/R2 processing for OSR2/SR6 workflows.
 - USB serial, Wi-Fi UDP (`tcode.local:8000` by default), and Intiface Desktop output.
+- A transport-independent fixed-rate output clock with measured TCode intervals, soft start, per-axis signal remapping, speed limits, output switches, and configurable safe positions. Axis cards and the 3D preview always follow the final protected signal, whether hardware output is armed or not.
 - Separate SR6/OSR 3D viewer with optional always-on-top mode.
 - Per-axis gain (output travel around the selected center) and output-range controls, saved beside the executable in portable mode.
 - Light and dark themes, plus English, Simplified Chinese, and system-language selection.
@@ -70,6 +71,7 @@ It uses `windeployqt` to copy the Qt runtime beside the executable. The output s
 - Wi-Fi uses the same UDP TCode transport as the existing F8Studio project (`tcode.local:8000` by default).
 - Intiface connects to the user's Intiface Desktop WebSocket at `ws://127.0.0.1:12345`. The first implementation only enables a device with a declared Linear feature and maps L0 to that feature; it does not pretend that a generic Intiface device is an SR6.
 - A start or imported configuration is always disarmed. Stream loss holds the final value for 250 ms, then returns to center over 600 ms.
+- Advanced output processing defaults to 50 Hz with a 600 ms soft start. Each axis card opens compact remapping and protection popups. The two remapping points can be moved freely; each axis can be speed-limited or disabled independently, and a disabled axis stays at its configurable safe position.
 
 ## One-time F8Studio migration
 
