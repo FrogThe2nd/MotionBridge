@@ -12,7 +12,7 @@ license is included beside the packaged model assets.
 
 ## MultiFunPlayer
 
-Motion Bridge's fixed-cadence output design was informed by
+Motion Bridge's fixed-cadence output and cross-axis smart-limit designs were informed by
 [MultiFunPlayer](https://github.com/Yoooi0/MultiFunPlayer), which is licensed
 under the MIT License, Copyright (c) 2020 Yoooi. Motion Bridge uses its own
 C++/Qt implementation for the live game-stream pipeline.

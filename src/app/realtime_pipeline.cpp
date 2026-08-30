@@ -192,67 +192,80 @@ void RealtimePipeline::set_axis_speed_limit(const int axis, const double value) 
     publish_output_processing_settings();
 }
 
-void RealtimePipeline::set_axis_remap_enabled(const int axis, const bool enabled) {
+void RealtimePipeline::set_axis_smart_limit_enabled(const int axis, const bool enabled) {
     if (axis < 0 || axis >= 6) return;
     auto config = output_processor_.config();
-    auto& remap = config.remap[static_cast<std::size_t>(axis)];
-    if (remap.enabled == enabled) return;
-    remap.enabled = enabled;
+    auto& smart_limit = config.smart_limit[static_cast<std::size_t>(axis)];
+    if (smart_limit.enabled == enabled) return;
+    smart_limit.enabled = enabled;
     output_processor_.set_config(config);
-    const auto actual = output_processor_.config().remap[static_cast<std::size_t>(axis)].enabled;
+    const auto actual = output_processor_.config().smart_limit[static_cast<std::size_t>(axis)].enabled;
     auto settings = motion_bridge_settings();
-    settings.setValue(QString("output/%1/remapEnabled").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), actual);
+    settings.setValue(QString("output/%1/smartLimitEnabled").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), actual);
     publish_output_processing_settings();
 }
 
-void RealtimePipeline::set_axis_remap_mode(const int axis, const QString& mode) {
-    if (axis < 0 || axis >= 6) return;
-    const auto next = mode.compare("speed", Qt::CaseInsensitive) == 0 ? SignalRemapMode::Speed : SignalRemapMode::Value;
+void RealtimePipeline::set_axis_smart_limit_input(const int axis, const int input_axis) {
+    if (axis < 0 || axis >= 6 || input_axis < 0 || input_axis >= 6) return;
     auto config = output_processor_.config();
-    auto& remap = config.remap[static_cast<std::size_t>(axis)];
-    if (remap.mode == next) return;
-    remap.mode = next;
+    auto& smart_limit = config.smart_limit[static_cast<std::size_t>(axis)];
+    const auto next = static_cast<std::size_t>(input_axis);
+    if (smart_limit.input_axis == next) return;
+    smart_limit.input_axis = next;
     output_processor_.set_config(config);
     auto settings = motion_bridge_settings();
-    settings.setValue(QString("output/%1/remapMode").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])),
-                      next == SignalRemapMode::Speed ? "speed" : "value");
+    settings.setValue(QString("output/%1/smartLimitInputAxis").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), input_axis);
     publish_output_processing_settings();
 }
 
-void RealtimePipeline::set_axis_remap_target(const int axis, const double value) {
+void RealtimePipeline::set_axis_smart_limit_mode(const int axis, const QString& mode) {
+    if (axis < 0 || axis >= 6) return;
+    const auto next = mode.compare("speed", Qt::CaseInsensitive) == 0 ? SmartLimitMode::Speed : SmartLimitMode::Value;
+    auto config = output_processor_.config();
+    auto& smart_limit = config.smart_limit[static_cast<std::size_t>(axis)];
+    if (smart_limit.mode == next) return;
+    smart_limit.mode = next;
+    output_processor_.set_config(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue(QString("output/%1/smartLimitMode").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])),
+                      next == SmartLimitMode::Speed ? "speed" : "value");
+    publish_output_processing_settings();
+}
+
+void RealtimePipeline::set_axis_smart_limit_target(const int axis, const double value) {
     if (axis < 0 || axis >= 6) return;
     const auto next = std::clamp(value, 0.0, 1.0);
     auto config = output_processor_.config();
-    auto& target = config.remap[static_cast<std::size_t>(axis)].target_value;
+    auto& target = config.smart_limit[static_cast<std::size_t>(axis)].target_value;
     if (std::abs(target - next) < 0.0001) return;
     target = next;
     output_processor_.set_config(config);
     auto settings = motion_bridge_settings();
-    settings.setValue(QString("output/%1/remapTargetValue").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), next);
+    settings.setValue(QString("output/%1/smartLimitTargetValue").arg(QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)])), next);
     publish_output_processing_settings();
 }
 
-void RealtimePipeline::set_axis_remap_curve(const int axis, const double lower_input, const double lower_factor,
-                                             const double upper_input, const double upper_factor) {
+void RealtimePipeline::set_axis_smart_limit_curve(const int axis, const double lower_input, const double lower_factor,
+                                                   const double upper_input, const double upper_factor) {
     if (axis < 0 || axis >= 6) return;
     auto config = output_processor_.config();
-    auto& remap = config.remap[static_cast<std::size_t>(axis)];
-    if (std::abs(remap.lower_input - lower_input) < 0.0001 &&
-        std::abs(remap.lower_factor - lower_factor) < 0.0001 &&
-        std::abs(remap.upper_input - upper_input) < 0.0001 &&
-        std::abs(remap.upper_factor - upper_factor) < 0.0001) return;
-    remap.lower_input = lower_input;
-    remap.lower_factor = lower_factor;
-    remap.upper_input = upper_input;
-    remap.upper_factor = upper_factor;
+    auto& smart_limit = config.smart_limit[static_cast<std::size_t>(axis)];
+    if (std::abs(smart_limit.lower_input - lower_input) < 0.0001 &&
+        std::abs(smart_limit.lower_factor - lower_factor) < 0.0001 &&
+        std::abs(smart_limit.upper_input - upper_input) < 0.0001 &&
+        std::abs(smart_limit.upper_factor - upper_factor) < 0.0001) return;
+    smart_limit.lower_input = lower_input;
+    smart_limit.lower_factor = lower_factor;
+    smart_limit.upper_input = upper_input;
+    smart_limit.upper_factor = upper_factor;
     output_processor_.set_config(config);
-    const auto& actual = output_processor_.config().remap[static_cast<std::size_t>(axis)];
+    const auto& actual = output_processor_.config().smart_limit[static_cast<std::size_t>(axis)];
     const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)]);
     auto settings = motion_bridge_settings();
-    settings.setValue(QString("output/%1/remapLowerInput").arg(axis_name), actual.lower_input);
-    settings.setValue(QString("output/%1/remapLowerFactor").arg(axis_name), actual.lower_factor);
-    settings.setValue(QString("output/%1/remapUpperInput").arg(axis_name), actual.upper_input);
-    settings.setValue(QString("output/%1/remapUpperFactor").arg(axis_name), actual.upper_factor);
+    settings.setValue(QString("output/%1/smartLimitLowerInput").arg(axis_name), actual.lower_input);
+    settings.setValue(QString("output/%1/smartLimitLowerFactor").arg(axis_name), actual.lower_factor);
+    settings.setValue(QString("output/%1/smartLimitUpperInput").arg(axis_name), actual.upper_input);
+    settings.setValue(QString("output/%1/smartLimitUpperFactor").arg(axis_name), actual.upper_factor);
     publish_output_processing_settings();
 }
 
@@ -340,7 +353,12 @@ void RealtimePipeline::publish_snapshot() {
         if (!changed) return;
     }
     last_ui_snapshot_ = snapshot_;
-    emit snapshot_ready(QString::fromLatin1(to_string(snapshot_.state)), QString::fromStdString(snapshot_.action_id), reference_plane_label_, axes_to_variant(snapshot_.raw_axes), axes_to_variant(snapshot_.device_axes));
+    emit snapshot_ready(QString::fromLatin1(to_string(snapshot_.state)),
+                        QString::fromStdString(snapshot_.action_id),
+                        reference_plane_label_,
+                        axes_to_variant(snapshot_.raw_axes),
+                        axes_to_variant(output_processor_.smart_limit_inputs()),
+                        axes_to_variant(snapshot_.device_axes));
 }
 
 void RealtimePipeline::save_settings() {
@@ -381,19 +399,49 @@ void RealtimePipeline::load_settings() {
             settings.value(prefix + "speedLimitEnabled", legacy_speed_enabled).toBool();
         output_config.max_speed_per_second[static_cast<std::size_t>(index)] =
             std::clamp(settings.value(prefix + "maxSpeed", 4.0).toDouble(), 0.25, 10.0);
-        auto& remap = output_config.remap[static_cast<std::size_t>(index)];
-        remap.enabled = settings.value(prefix + "remapEnabled", false).toBool();
-        remap.mode = settings.value(prefix + "remapMode", "value").toString().compare("speed", Qt::CaseInsensitive) == 0
-            ? SignalRemapMode::Speed : SignalRemapMode::Value;
-        remap.target_value = settings.value(prefix + "remapTargetValue", 0.5).toDouble();
-        remap.lower_input = settings.value(prefix + "remapLowerInput", 0.0).toDouble();
-        remap.lower_factor = settings.value(
-            prefix + "remapLowerFactor",
-            settings.value(prefix + "remapFactorAtZero", 1.0)).toDouble();
-        remap.upper_input = settings.value(prefix + "remapUpperInput", 1.0).toDouble();
-        remap.upper_factor = settings.value(
-            prefix + "remapUpperFactor",
-            settings.value(prefix + "remapFactorAtOne", 0.0)).toDouble();
+        auto& smart_limit = output_config.smart_limit[static_cast<std::size_t>(index)];
+        const auto migrate_remap = !settings.contains(prefix + "smartLimitEnabled") &&
+                                   settings.contains(prefix + "remapEnabled");
+        smart_limit.enabled = settings.value(
+            prefix + "smartLimitEnabled",
+            settings.value(prefix + "remapEnabled", false)).toBool();
+        smart_limit.input_axis = static_cast<std::size_t>(std::clamp(
+            settings.value(prefix + "smartLimitInputAxis", migrate_remap ? index : 0).toInt(), 0, 5));
+        const auto legacy_mode = settings.value(prefix + "remapMode", "value").toString();
+        smart_limit.mode = settings.value(prefix + "smartLimitMode", legacy_mode).toString().compare("speed", Qt::CaseInsensitive) == 0
+            ? SmartLimitMode::Speed : SmartLimitMode::Value;
+        smart_limit.target_value = settings.value(
+            prefix + "smartLimitTargetValue",
+            settings.value(prefix + "remapTargetValue", 0.5)).toDouble();
+        smart_limit.lower_input = settings.value(
+            prefix + "smartLimitLowerInput",
+            migrate_remap ? settings.value(prefix + "remapLowerInput", 0.0) : 0.25).toDouble();
+        smart_limit.lower_factor = settings.value(
+            prefix + "smartLimitLowerFactor",
+            migrate_remap ? settings.value(prefix + "remapLowerFactor", settings.value(prefix + "remapFactorAtZero", 1.0)) : 1.0).toDouble();
+        smart_limit.upper_input = settings.value(
+            prefix + "smartLimitUpperInput",
+            migrate_remap ? settings.value(prefix + "remapUpperInput", 1.0) : 0.9).toDouble();
+        smart_limit.upper_factor = settings.value(
+            prefix + "smartLimitUpperFactor",
+            migrate_remap ? settings.value(prefix + "remapUpperFactor", settings.value(prefix + "remapFactorAtOne", 0.0)) : 0.0).toDouble();
+
+        if (migrate_remap) {
+            settings.setValue(prefix + "smartLimitEnabled", smart_limit.enabled);
+            settings.setValue(prefix + "smartLimitInputAxis", static_cast<int>(smart_limit.input_axis));
+            settings.setValue(prefix + "smartLimitMode", smart_limit.mode == SmartLimitMode::Speed ? "speed" : "value");
+            settings.setValue(prefix + "smartLimitTargetValue", smart_limit.target_value);
+            settings.setValue(prefix + "smartLimitLowerInput", smart_limit.lower_input);
+            settings.setValue(prefix + "smartLimitLowerFactor", smart_limit.lower_factor);
+            settings.setValue(prefix + "smartLimitUpperInput", smart_limit.upper_input);
+            settings.setValue(prefix + "smartLimitUpperFactor", smart_limit.upper_factor);
+        }
+        for (const auto* obsolete_key : {
+                 "remapEnabled", "remapMode", "remapTargetValue", "remapLowerInput",
+                 "remapLowerFactor", "remapUpperInput", "remapUpperFactor",
+                 "remapFactorAtZero", "remapFactorAtOne"}) {
+            settings.remove(prefix + obsolete_key);
+        }
     }
     output_processor_.set_config(output_config);
     auto contact = engine_.contact_config();
@@ -457,19 +505,20 @@ void RealtimePipeline::publish_output_processing_settings() {
     QVariantList axis_settings;
     const auto& config = output_processor_.config();
     for (std::size_t index = 0; index < config.max_speed_per_second.size(); ++index) {
-        const auto& remap = config.remap[index];
+        const auto& smart_limit = config.smart_limit[index];
         axis_settings.push_back(QVariantMap{
             {"axisEnabled", config.axis_output_enabled[index]},
             {"safeValue", config.axis_safe_value[index]},
             {"speedEnabled", config.speed_limit_enabled[index]},
             {"maxSpeed", config.max_speed_per_second[index]},
-            {"remapEnabled", remap.enabled},
-            {"remapMode", remap.mode == SignalRemapMode::Speed ? "speed" : "value"},
-            {"targetValue", remap.target_value},
-            {"lowerInput", remap.lower_input},
-            {"lowerFactor", remap.lower_factor},
-            {"upperInput", remap.upper_input},
-            {"upperFactor", remap.upper_factor}
+            {"smartLimitEnabled", smart_limit.enabled},
+            {"smartLimitInputAxis", static_cast<int>(smart_limit.input_axis)},
+            {"smartLimitMode", smart_limit.mode == SmartLimitMode::Speed ? "speed" : "value"},
+            {"smartLimitTargetValue", smart_limit.target_value},
+            {"smartLimitLowerInput", smart_limit.lower_input},
+            {"smartLimitLowerFactor", smart_limit.lower_factor},
+            {"smartLimitUpperInput", smart_limit.upper_input},
+            {"smartLimitUpperFactor", smart_limit.upper_factor}
         });
     }
     emit output_processing_settings_changed(

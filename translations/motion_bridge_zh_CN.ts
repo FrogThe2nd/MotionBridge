@@ -5,13 +5,21 @@
     <name>AxisCard</name>
     <message>
         <location filename="../qml/AxisCard.qml" line="255"/>
-        <source>Signal remapping</source>
-        <translation>信号重映射</translation>
+        <source>Smart limit</source>
+        <translation>智能限制</translation>
     </message>
     <message>
         <location filename="../qml/AxisCard.qml" line="290"/>
         <source>Speed limit</source>
         <translation>速度限制</translation>
+    </message>
+    <message>
+        <source>SMART LIMIT</source>
+        <translation>智能限制</translation>
+    </message>
+    <message>
+        <source>DRIVER AXIS</source>
+        <translation>驱动轴</translation>
     </message>
     <message>
         <source>Axis output off</source>
@@ -57,8 +65,8 @@
     </message>
     <message>
         <location filename="../qml/AxisCard.qml" line="425"/>
-        <source>X: current axis input  ·  Y: retained output</source>
-        <translation>X：当前轴输入  ·  Y：输出保留比例</translation>
+        <source>X: %1 position  ·  Y: allowed motion</source>
+        <translation>X：%1 轴位置  ·  Y：允许运动比例</translation>
     </message>
     <message>
         <location filename="../qml/AxisCard.qml" line="610"/>
@@ -68,7 +76,7 @@
     <message>
         <location filename="../qml/AxisCard.qml" line="615"/>
         <source>Value</source>
-        <translation>数值</translation>
+        <translation>行程</translation>
     </message>
     <message>
         <location filename="../qml/AxisCard.qml" line="615"/>
@@ -78,7 +86,7 @@
     <message>
         <location filename="../qml/AxisCard.qml" line="645"/>
         <source>TARGET VALUE</source>
-        <translation>目标值</translation>
+        <translation>目标位置</translation>
     </message>
 </context>
 <context>

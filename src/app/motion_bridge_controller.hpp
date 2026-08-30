@@ -18,6 +18,7 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QString actionName READ action_name NOTIFY snapshotChanged)
     Q_PROPERTY(QString referencePlane READ reference_plane NOTIFY snapshotChanged)
     Q_PROPERTY(QVariantList rawAxes READ raw_axes NOTIFY snapshotChanged)
+    Q_PROPERTY(QVariantList smartLimitInputAxes READ smart_limit_input_axes NOTIFY snapshotChanged)
     Q_PROPERTY(QVariantList deviceAxes READ device_axes NOTIFY snapshotChanged)
     Q_PROPERTY(bool armed READ armed NOTIFY statusChanged)
     Q_PROPERTY(QString outputMode READ output_mode NOTIFY statusChanged)
@@ -49,6 +50,7 @@ public:
     [[nodiscard]] QString action_name() const;
     [[nodiscard]] QString reference_plane() const;
     [[nodiscard]] QVariantList raw_axes() const;
+    [[nodiscard]] QVariantList smart_limit_input_axes() const;
     [[nodiscard]] QVariantList device_axes() const;
     [[nodiscard]] bool armed() const;
     [[nodiscard]] QString output_mode() const;
@@ -84,11 +86,12 @@ public:
     Q_INVOKABLE void set_axis_safe_value(int axis, double value);
     Q_INVOKABLE void set_axis_speed_limit_enabled(int axis, bool enabled);
     Q_INVOKABLE void set_axis_speed_limit(int axis, double value);
-    Q_INVOKABLE void set_axis_remap_enabled(int axis, bool enabled);
-    Q_INVOKABLE void set_axis_remap_mode(int axis, const QString& mode);
-    Q_INVOKABLE void set_axis_remap_target(int axis, double value);
-    Q_INVOKABLE void set_axis_remap_curve(int axis, double lower_input, double lower_factor,
-                                          double upper_input, double upper_factor);
+    Q_INVOKABLE void set_axis_smart_limit_enabled(int axis, bool enabled);
+    Q_INVOKABLE void set_axis_smart_limit_input(int axis, int input_axis);
+    Q_INVOKABLE void set_axis_smart_limit_mode(int axis, const QString& mode);
+    Q_INVOKABLE void set_axis_smart_limit_target(int axis, double value);
+    Q_INVOKABLE void set_axis_smart_limit_curve(int axis, double lower_input, double lower_factor,
+                                                double upper_input, double upper_factor);
     Q_INVOKABLE void set_stream_path(const QString& path);
     Q_INVOKABLE void refresh_usb_ports();
     Q_INVOKABLE void set_theme(const QString& theme);
@@ -113,6 +116,7 @@ private:
     QString action_name_;
     QString reference_plane_;
     QVariantList raw_axes_{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
+    QVariantList smart_limit_input_axes_{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
     QVariantList device_axes_{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
     QString output_mode_{"none"};
     QString spool_path_;

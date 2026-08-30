@@ -36,17 +36,20 @@ public slots:
     void set_axis_safe_value(int axis, double value);
     void set_axis_speed_limit_enabled(int axis, bool enabled);
     void set_axis_speed_limit(int axis, double value);
-    void set_axis_remap_enabled(int axis, bool enabled);
-    void set_axis_remap_mode(int axis, const QString& mode);
-    void set_axis_remap_target(int axis, double value);
-    void set_axis_remap_curve(int axis, double lower_input, double lower_factor,
-                              double upper_input, double upper_factor);
+    void set_axis_smart_limit_enabled(int axis, bool enabled);
+    void set_axis_smart_limit_input(int axis, int input_axis);
+    void set_axis_smart_limit_mode(int axis, const QString& mode);
+    void set_axis_smart_limit_target(int axis, double value);
+    void set_axis_smart_limit_curve(int axis, double lower_input, double lower_factor,
+                                    double upper_input, double upper_factor);
     void set_stream_path(const QString& path);
     void set_theme(const QString& theme);
     void set_reference_participant(const QString& reference);
 
 signals:
-    void snapshot_ready(const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& device);
+    void snapshot_ready(const QString& state, const QString& action, const QString& reference_plane,
+                        const QVariantList& raw, const QVariantList& smart_limit_inputs,
+                        const QVariantList& device);
     void stream_status_changed(bool connected, const QString& text);
     void output_status_changed(const QString& text, bool armed, const QString& mode);
     void spool_path_changed(const QString& path);

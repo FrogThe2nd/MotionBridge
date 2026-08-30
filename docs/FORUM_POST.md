@@ -23,7 +23,7 @@ https://store.steampowered.com/app/1811180/
 - USB TCode, Wi-Fi UDP TCode (default: `tcode.local:8000`), and Intiface Desktop output.
 - Compatible with Intiface Central 2.6.
 - A separate live SR6/OSR 3D preview, which can stay on top of the game window.
-- Per-axis gain and output-range controls, editable two-point signal remapping, speed limits, output switches, and configurable safe positions. Axis cards and the 3D preview show the final protected signal even while hardware output is disarmed. Settings are saved with the portable app.
+- Per-axis gain and output-range controls, cross-axis smart limits with an editable two-point curve, hard speed limits, output switches, and configurable safe positions. A selected driver axis can dynamically reduce another axis' range or response speed. Axis cards and the 3D preview show the final protected signal even while hardware output is disarmed. Settings are saved with the portable app.
 - Safe startup: output always begins disarmed. On stream loss, motion briefly holds and then returns smoothly to centre.
 - English and Simplified Chinese UI.
 - Use the matching Mod branch for Fallen Doll Demo or Fallen Doll Playtest.
@@ -102,7 +102,7 @@ https://store.steampowered.com/app/1811180/
 - 支持 USB TCode、Wi-Fi UDP TCode（默认 `tcode.local:8000`）和 Intiface Desktop 输出。
 - 兼容 Intiface Central 2.6。
 - 独立的 SR6/OSR 实时 3D 预览窗口，可置顶显示在游戏上方。
-- 每轴增益与输出范围、可自由拖动双点的信号重映射、速度限制、输出开关和安全位置设置；即使硬件输出未解锁，轴卡和 3D 预览也会显示最终处理后的信号。便携版会保存设置。
+- 每轴增益与输出范围、带双点曲线的跨轴智能限制、硬性速度限制、输出开关和安全位置设置；智能限制可根据所选驱动轴的位置，动态缩小另一个轴的行程或响应速度。即使硬件输出未解锁，轴卡和 3D 预览也会显示最终处理后的信号。便携版会保存设置。
 - 安全启动：设备输出默认未解锁。数据流中断时会短暂停留，然后平滑回中。
 - 支持英文和简体中文界面。
 - 请按游戏版本选择 Fallen Doll Demo 或 Fallen Doll Playtest 对应的 Mod 分支。

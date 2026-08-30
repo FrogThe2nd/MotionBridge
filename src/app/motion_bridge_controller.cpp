@@ -10,8 +10,8 @@
 MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent), pipeline_(new RealtimePipeline) {
     pipeline_->moveToThread(&realtime_thread_);
     connect(&realtime_thread_, &QThread::finished, pipeline_, &QObject::deleteLater);
-    connect(pipeline_, &RealtimePipeline::snapshot_ready, this, [this](const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& device) {
-        motion_state_ = state; action_name_ = action; reference_plane_ = reference_plane; raw_axes_ = raw; device_axes_ = device; emit snapshotChanged();
+    connect(pipeline_, &RealtimePipeline::snapshot_ready, this, [this](const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& smart_limit_inputs, const QVariantList& device) {
+        motion_state_ = state; action_name_ = action; reference_plane_ = reference_plane; raw_axes_ = raw; smart_limit_input_axes_ = smart_limit_inputs; device_axes_ = device; emit snapshotChanged();
     });
     connect(pipeline_, &RealtimePipeline::stream_status_changed, this, [this](const bool connected, const QString& status) {
         stream_connected_ = connected; stream_status_ = status; emit statusChanged();
@@ -70,6 +70,7 @@ QString MotionBridgeController::motion_state() const { return motion_state_; }
 QString MotionBridgeController::action_name() const { return action_name_; }
 QString MotionBridgeController::reference_plane() const { return reference_plane_; }
 QVariantList MotionBridgeController::raw_axes() const { return raw_axes_; }
+QVariantList MotionBridgeController::smart_limit_input_axes() const { return smart_limit_input_axes_; }
 QVariantList MotionBridgeController::device_axes() const { return device_axes_; }
 bool MotionBridgeController::armed() const { return armed_; }
 QString MotionBridgeController::output_mode() const { return output_mode_; }
@@ -105,12 +106,13 @@ void MotionBridgeController::set_axis_output_enabled(const int axis, const bool 
 void MotionBridgeController::set_axis_safe_value(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_safe_value", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
 void MotionBridgeController::set_axis_speed_limit_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_speed_limit_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
 void MotionBridgeController::set_axis_speed_limit(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_speed_limit", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
-void MotionBridgeController::set_axis_remap_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_remap_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
-void MotionBridgeController::set_axis_remap_mode(const int axis, const QString& mode) { QMetaObject::invokeMethod(pipeline_, "set_axis_remap_mode", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(QString, mode)); }
-void MotionBridgeController::set_axis_remap_target(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_remap_target", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
-void MotionBridgeController::set_axis_remap_curve(const int axis, const double lower_input, const double lower_factor,
-                                                   const double upper_input, const double upper_factor) {
-    QMetaObject::invokeMethod(pipeline_, "set_axis_remap_curve", Qt::QueuedConnection,
+void MotionBridgeController::set_axis_smart_limit_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_smart_limit_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
+void MotionBridgeController::set_axis_smart_limit_input(const int axis, const int input_axis) { QMetaObject::invokeMethod(pipeline_, "set_axis_smart_limit_input", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(int, input_axis)); }
+void MotionBridgeController::set_axis_smart_limit_mode(const int axis, const QString& mode) { QMetaObject::invokeMethod(pipeline_, "set_axis_smart_limit_mode", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(QString, mode)); }
+void MotionBridgeController::set_axis_smart_limit_target(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_smart_limit_target", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
+void MotionBridgeController::set_axis_smart_limit_curve(const int axis, const double lower_input, const double lower_factor,
+                                                         const double upper_input, const double upper_factor) {
+    QMetaObject::invokeMethod(pipeline_, "set_axis_smart_limit_curve", Qt::QueuedConnection,
                               Q_ARG(int, axis), Q_ARG(double, lower_input), Q_ARG(double, lower_factor),
                               Q_ARG(double, upper_input), Q_ARG(double, upper_factor));
 }

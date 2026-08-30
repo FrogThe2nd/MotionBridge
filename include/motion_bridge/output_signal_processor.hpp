@@ -7,17 +7,18 @@
 
 namespace motion_bridge {
 
-enum class SignalRemapMode { Value, Speed };
+enum class SmartLimitMode { Value, Speed };
 
-struct AxisSignalRemap {
+struct AxisSmartLimit {
     bool enabled{};
-    SignalRemapMode mode{SignalRemapMode::Value};
+    std::size_t input_axis{};
+    SmartLimitMode mode{SmartLimitMode::Value};
     double target_value{0.5};
-    // X is this axis' own pre-remap input and Y is the retained-output factor.
+    // X is the selected driver axis and Y is the motion retained by this axis.
     // Outside the two control points the nearest endpoint factor is held.
-    double lower_input{};
+    double lower_input{0.25};
     double lower_factor{1.0};
-    double upper_input{1.0};
+    double upper_input{0.9};
     double upper_factor{};
 };
 
@@ -26,7 +27,7 @@ struct OutputSignalConfig {
     std::chrono::milliseconds soft_start_for{600};
     std::array<bool, 6> axis_output_enabled{true, true, true, true, true, true};
     std::array<double, 6> axis_safe_value{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
-    std::array<AxisSignalRemap, 6> remap;
+    std::array<AxisSmartLimit, 6> smart_limit;
     std::array<bool, 6> speed_limit_enabled{};
     std::array<double, 6> max_speed_per_second{4.0, 4.0, 4.0, 4.0, 4.0, 4.0};
 };
@@ -48,10 +49,12 @@ public:
 
     [[nodiscard]] Axes process(const Axes& target, std::chrono::microseconds now, bool live_motion);
     [[nodiscard]] const Axes& current() const noexcept;
+    [[nodiscard]] const Axes& smart_limit_inputs() const noexcept;
 
 private:
     OutputSignalConfig config_;
     Axes current_;
+    Axes smart_limit_inputs_;
     bool armed_{};
     bool live_started_{};
     std::chrono::microseconds live_started_at_{};

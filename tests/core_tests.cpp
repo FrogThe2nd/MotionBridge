@@ -242,34 +242,34 @@ void test_output_disabled_axis_stays_safe_during_stream_return() {
     require_close(processor.process(returning, std::chrono::milliseconds{100}, false)[0], 0.2);
 }
 
-void test_output_value_remap_supports_zero_and_one_factors() {
+void test_smart_limit_value_mode_supports_zero_and_one_factors() {
     OutputSignalConfig config;
     config.soft_start_enabled = false;
-    auto& remap = config.remap[0];
-    remap.enabled = true;
-    remap.target_value = 0.25;
-    remap.lower_factor = 0.0;
-    remap.upper_factor = 0.0;
+    auto& smart_limit = config.smart_limit[0];
+    smart_limit.enabled = true;
+    smart_limit.target_value = 0.25;
+    smart_limit.lower_factor = 0.0;
+    smart_limit.upper_factor = 0.0;
     OutputSignalProcessor processor(config);
     Axes target;
     target[0] = 0.9;
     processor.arm(std::chrono::milliseconds{0});
     require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.25);
 
-    remap.lower_factor = 1.0;
-    remap.upper_factor = 1.0;
+    smart_limit.lower_factor = 1.0;
+    smart_limit.upper_factor = 1.0;
     processor.set_config(config);
     require_close(processor.process(target, std::chrono::milliseconds{20}, true)[0], 0.9);
 }
 
-void test_output_speed_remap_blends_from_current_output() {
+void test_smart_limit_speed_mode_blends_from_current_output() {
     OutputSignalConfig config;
     config.soft_start_enabled = false;
-    auto& remap = config.remap[0];
-    remap.enabled = true;
-    remap.mode = SignalRemapMode::Speed;
-    remap.lower_factor = 0.5;
-    remap.upper_factor = 0.5;
+    auto& smart_limit = config.smart_limit[0];
+    smart_limit.enabled = true;
+    smart_limit.mode = SmartLimitMode::Speed;
+    smart_limit.lower_factor = 0.5;
+    smart_limit.upper_factor = 0.5;
     OutputSignalProcessor processor(config);
     Axes target;
     target[0] = 1.0;
@@ -278,17 +278,18 @@ void test_output_speed_remap_blends_from_current_output() {
     require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.53125);
 }
 
-void test_output_remap_holds_endpoints_and_interpolates_between_them() {
+void test_smart_limit_holds_endpoints_and_interpolates_between_them() {
     OutputSignalConfig config;
     config.soft_start_enabled = false;
     for (std::size_t index = 0; index < 3; ++index) {
-        auto& remap = config.remap[index];
-        remap.enabled = true;
-        remap.target_value = 0.0;
-        remap.lower_input = 0.25;
-        remap.lower_factor = 0.8;
-        remap.upper_input = 0.75;
-        remap.upper_factor = 0.2;
+        auto& smart_limit = config.smart_limit[index];
+        smart_limit.enabled = true;
+        smart_limit.input_axis = index;
+        smart_limit.target_value = 0.0;
+        smart_limit.lower_input = 0.25;
+        smart_limit.lower_factor = 0.8;
+        smart_limit.upper_input = 0.75;
+        smart_limit.upper_factor = 0.2;
     }
     OutputSignalProcessor processor(config);
     Axes target;
@@ -303,66 +304,104 @@ void test_output_remap_holds_endpoints_and_interpolates_between_them() {
     require_close(output[2], 0.18);
 }
 
-void test_output_remap_x_coordinates_change_transition_location() {
+void test_smart_limit_x_coordinates_change_transition_location() {
     OutputSignalConfig config;
     config.soft_start_enabled = false;
-    auto& remap = config.remap[0];
-    remap.enabled = true;
-    remap.target_value = 0.0;
-    remap.lower_input = 0.2;
-    remap.lower_factor = 1.0;
-    remap.upper_input = 0.4;
-    remap.upper_factor = 0.0;
+    auto& smart_limit = config.smart_limit[0];
+    smart_limit.enabled = true;
+    smart_limit.target_value = 0.0;
+    smart_limit.lower_input = 0.2;
+    smart_limit.lower_factor = 1.0;
+    smart_limit.upper_input = 0.4;
+    smart_limit.upper_factor = 0.0;
     OutputSignalProcessor processor(config);
     Axes target;
     target[0] = 0.25;
     processor.arm(std::chrono::milliseconds{0});
     require_close(processor.process(target, std::chrono::milliseconds{0}, true)[0], 0.1875);
 
-    remap.lower_input = 0.0;
-    remap.upper_input = 0.1;
+    smart_limit.lower_input = 0.0;
+    smart_limit.upper_input = 0.1;
     processor.set_config(config);
     require_close(processor.process(target, std::chrono::milliseconds{20}, true)[0], 0.0);
 }
 
-void test_output_remap_uses_each_axis_own_pre_remap_input() {
+void test_smart_limit_uses_selected_driver_axes_from_one_snapshot() {
     OutputSignalConfig config;
     config.soft_start_enabled = false;
-    for (std::size_t index = 0; index < 2; ++index) {
-        auto& remap = config.remap[index];
-        remap.enabled = true;
-        remap.target_value = 0.0;
-        remap.lower_factor = 0.0;
-        remap.upper_factor = 1.0;
-    }
+    auto& first = config.smart_limit[1];
+    first.enabled = true;
+    first.input_axis = 0;
+    first.target_value = 0.0;
+    first.lower_input = 0.0;
+    first.lower_factor = 0.0;
+    first.upper_input = 1.0;
+    first.upper_factor = 1.0;
+    auto& second = config.smart_limit[2];
+    second.enabled = true;
+    second.input_axis = 1;
+    second.target_value = 0.0;
+    second.lower_input = 0.0;
+    second.lower_factor = 0.0;
+    second.upper_input = 1.0;
+    second.upper_factor = 1.0;
     OutputSignalProcessor processor(config);
     Axes target;
-    target[0] = 0.2;
+    target[0] = 0.25;
+    target[1] = 0.8;
+    target[2] = 0.6;
+    processor.arm(std::chrono::milliseconds{0});
+
+    const auto output = processor.process(target, std::chrono::milliseconds{0}, true);
+    require_close(output[0], 0.25);
+    require_close(output[1], 0.2);
+    require_close(output[2], 0.48);
+}
+
+void test_smart_limit_reads_disabled_driver_safe_position() {
+    OutputSignalConfig config;
+    config.soft_start_enabled = false;
+    config.axis_output_enabled[0] = false;
+    config.axis_safe_value[0] = 0.2;
+    auto& smart_limit = config.smart_limit[1];
+    smart_limit.enabled = true;
+    smart_limit.input_axis = 0;
+    smart_limit.target_value = 0.0;
+    smart_limit.lower_input = 0.0;
+    smart_limit.lower_factor = 0.0;
+    smart_limit.upper_input = 1.0;
+    smart_limit.upper_factor = 1.0;
+    OutputSignalProcessor processor(config);
+    Axes target;
+    target[0] = 1.0;
     target[1] = 0.8;
     processor.arm(std::chrono::milliseconds{0});
 
     const auto output = processor.process(target, std::chrono::milliseconds{0}, true);
-    require_close(output[0], 0.04);
-    require_close(output[1], 0.64);
+    require_close(output[0], 0.2);
+    require_close(output[1], 0.16);
+    require_close(processor.smart_limit_inputs()[0], 0.2);
 }
 
-void test_output_remap_normalizes_control_points() {
+void test_smart_limit_normalizes_control_points_and_driver_axis() {
     OutputSignalConfig config;
-    auto& reversed = config.remap[0];
+    auto& reversed = config.smart_limit[0];
+    reversed.input_axis = 99;
     reversed.lower_input = 1.2;
     reversed.lower_factor = -1.0;
     reversed.upper_input = -0.2;
     reversed.upper_factor = 2.0;
-    config.remap[1].lower_input = 0.5;
-    config.remap[1].upper_input = 0.5;
+    config.smart_limit[1].lower_input = 0.5;
+    config.smart_limit[1].upper_input = 0.5;
     OutputSignalProcessor processor(config);
 
     const auto& normalized = processor.config();
-    require_close(normalized.remap[0].lower_input, 0.0);
-    require_close(normalized.remap[0].lower_factor, 1.0);
-    require_close(normalized.remap[0].upper_input, 1.0);
-    require_close(normalized.remap[0].upper_factor, 0.0);
-    assert(normalized.remap[1].upper_input - normalized.remap[1].lower_input >= 0.01 - 1e-9);
+    assert(normalized.smart_limit[0].input_axis == 5);
+    require_close(normalized.smart_limit[0].lower_input, 0.0);
+    require_close(normalized.smart_limit[0].lower_factor, 1.0);
+    require_close(normalized.smart_limit[0].upper_input, 1.0);
+    require_close(normalized.smart_limit[0].upper_factor, 0.0);
+    assert(normalized.smart_limit[1].upper_input - normalized.smart_limit[1].lower_input >= 0.01 - 1e-9);
 }
 
 void test_direct_profile_uses_reference_length_and_axis_mask() {
@@ -666,12 +705,13 @@ int main() {
     test_output_waits_at_custom_safe_values_before_live_motion();
     test_output_axis_disable_obeys_its_speed_limit();
     test_output_disabled_axis_stays_safe_during_stream_return();
-    test_output_value_remap_supports_zero_and_one_factors();
-    test_output_speed_remap_blends_from_current_output();
-    test_output_remap_holds_endpoints_and_interpolates_between_them();
-    test_output_remap_x_coordinates_change_transition_location();
-    test_output_remap_uses_each_axis_own_pre_remap_input();
-    test_output_remap_normalizes_control_points();
+    test_smart_limit_value_mode_supports_zero_and_one_factors();
+    test_smart_limit_speed_mode_blends_from_current_output();
+    test_smart_limit_holds_endpoints_and_interpolates_between_them();
+    test_smart_limit_x_coordinates_change_transition_location();
+    test_smart_limit_uses_selected_driver_axes_from_one_snapshot();
+    test_smart_limit_reads_disabled_driver_safe_position();
+    test_smart_limit_normalizes_control_points_and_driver_axis();
     test_gain_scales_output_travel();
     test_hold_and_return();
     test_bilateral_contact_uses_reference_depth();

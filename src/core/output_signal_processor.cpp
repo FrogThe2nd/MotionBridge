@@ -7,7 +7,7 @@
 namespace motion_bridge {
 namespace {
 
-constexpr double kMinimumRemapInputSeparation = 0.01;
+constexpr double kMinimumSmartLimitInputSeparation = 0.01;
 
 [[nodiscard]] double smoothstep(const double value) {
     const auto clamped = std::clamp(value, 0.0, 1.0);
@@ -20,31 +20,33 @@ constexpr double kMinimumRemapInputSeparation = 0.01;
     return std::max(0.0, static_cast<double>((later - earlier).count()) / 1'000'000.0);
 }
 
-void normalize_remap_curve(AxisSignalRemap& remap) {
-    remap.lower_input = std::clamp(remap.lower_input, 0.0, 1.0);
-    remap.lower_factor = std::clamp(remap.lower_factor, 0.0, 1.0);
-    remap.upper_input = std::clamp(remap.upper_input, 0.0, 1.0);
-    remap.upper_factor = std::clamp(remap.upper_factor, 0.0, 1.0);
+void normalize_smart_limit_curve(AxisSmartLimit& smart_limit) {
+    smart_limit.input_axis = std::min(smart_limit.input_axis, std::size_t{5});
+    smart_limit.lower_input = std::clamp(smart_limit.lower_input, 0.0, 1.0);
+    smart_limit.lower_factor = std::clamp(smart_limit.lower_factor, 0.0, 1.0);
+    smart_limit.upper_input = std::clamp(smart_limit.upper_input, 0.0, 1.0);
+    smart_limit.upper_factor = std::clamp(smart_limit.upper_factor, 0.0, 1.0);
 
-    if (remap.lower_input > remap.upper_input) {
-        std::swap(remap.lower_input, remap.upper_input);
-        std::swap(remap.lower_factor, remap.upper_factor);
+    if (smart_limit.lower_input > smart_limit.upper_input) {
+        std::swap(smart_limit.lower_input, smart_limit.upper_input);
+        std::swap(smart_limit.lower_factor, smart_limit.upper_factor);
     }
 
-    if (remap.upper_input - remap.lower_input < kMinimumRemapInputSeparation) {
-        const auto midpoint = (remap.lower_input + remap.upper_input) * 0.5;
-        remap.lower_input = std::clamp(midpoint - kMinimumRemapInputSeparation * 0.5,
-                                       0.0,
-                                       1.0 - kMinimumRemapInputSeparation);
-        remap.upper_input = remap.lower_input + kMinimumRemapInputSeparation;
+    if (smart_limit.upper_input - smart_limit.lower_input < kMinimumSmartLimitInputSeparation) {
+        const auto midpoint = (smart_limit.lower_input + smart_limit.upper_input) * 0.5;
+        smart_limit.lower_input = std::clamp(midpoint - kMinimumSmartLimitInputSeparation * 0.5,
+                                             0.0,
+                                             1.0 - kMinimumSmartLimitInputSeparation);
+        smart_limit.upper_input = smart_limit.lower_input + kMinimumSmartLimitInputSeparation;
     }
 }
 
-[[nodiscard]] double remap_factor(const AxisSignalRemap& remap, const double input) {
-    if (input <= remap.lower_input) return remap.lower_factor;
-    if (input >= remap.upper_input) return remap.upper_factor;
-    const auto position = (input - remap.lower_input) / (remap.upper_input - remap.lower_input);
-    return remap.lower_factor + (remap.upper_factor - remap.lower_factor) * position;
+[[nodiscard]] double smart_limit_factor(const AxisSmartLimit& smart_limit, const double input) {
+    if (input <= smart_limit.lower_input) return smart_limit.lower_factor;
+    if (input >= smart_limit.upper_input) return smart_limit.upper_factor;
+    const auto position = (input - smart_limit.lower_input) /
+                          (smart_limit.upper_input - smart_limit.lower_input);
+    return smart_limit.lower_factor + (smart_limit.upper_factor - smart_limit.lower_factor) * position;
 }
 
 } // namespace
@@ -56,9 +58,9 @@ void OutputSignalProcessor::set_config(OutputSignalConfig config) {
     for (std::size_t index = 0; index < config.max_speed_per_second.size(); ++index) {
         config.axis_safe_value[index] = std::clamp(config.axis_safe_value[index], 0.0, 1.0);
         config.max_speed_per_second[index] = std::clamp(config.max_speed_per_second[index], 0.25, 10.0);
-        auto& remap = config.remap[index];
-        remap.target_value = std::clamp(remap.target_value, 0.0, 1.0);
-        normalize_remap_curve(remap);
+        auto& smart_limit = config.smart_limit[index];
+        smart_limit.target_value = std::clamp(smart_limit.target_value, 0.0, 1.0);
+        normalize_smart_limit_curve(smart_limit);
     }
     config_ = std::move(config);
 }
@@ -68,6 +70,7 @@ const OutputSignalConfig& OutputSignalProcessor::config() const noexcept { retur
 void OutputSignalProcessor::arm(const std::chrono::microseconds now) {
     for (std::size_t index = 0; index < current_.values.size(); ++index) {
         current_[index] = config_.axis_safe_value[index];
+        smart_limit_inputs_[index] = config_.axis_safe_value[index];
     }
     armed_ = true;
     live_started_ = false;
@@ -78,6 +81,7 @@ void OutputSignalProcessor::arm(const std::chrono::microseconds now) {
 void OutputSignalProcessor::disarm() {
     for (std::size_t index = 0; index < current_.values.size(); ++index) {
         current_[index] = config_.axis_safe_value[index];
+        smart_limit_inputs_[index] = config_.axis_safe_value[index];
     }
     armed_ = false;
     live_started_ = false;
@@ -110,6 +114,7 @@ Axes OutputSignalProcessor::process(
         for (std::size_t index = 0; index < current_.values.size(); ++index) {
             if (!config_.axis_output_enabled[index]) current_[index] = config_.axis_safe_value[index];
         }
+        smart_limit_inputs_ = current_;
         last_process_at_ = now;
         return current_;
     }
@@ -124,22 +129,26 @@ Axes OutputSignalProcessor::process(
         }
     }
 
-    // Every axis reads its own value from one pre-remap snapshot, so applying
-    // one curve cannot influence another axis in the same output tick.
-    const auto remap_inputs = candidate;
+    // Disabled driver axes expose their safe value to dependent smart limits.
     for (std::size_t index = 0; index < candidate.values.size(); ++index) {
-        // A disabled axis is still emitted at its configured safe position.
-        // Omitting the command would leave hardware holding the last value.
         if (!config_.axis_output_enabled[index]) {
             candidate[index] = config_.axis_safe_value[index];
-            continue;
         }
-        const auto& remap = config_.remap[index];
-        if (!remap.enabled) continue;
-        const auto input = std::clamp(remap_inputs[index], 0.0, 1.0);
-        const auto factor = std::clamp(remap_factor(remap, input), 0.0, 1.0);
-        if (remap.mode == SignalRemapMode::Value) {
-            candidate[index] = remap.target_value + (candidate[index] - remap.target_value) * factor;
+    }
+
+    // Every target axis reads its selected driver from one shared snapshot,
+    // so processing order cannot make cross-axis limits influence each other.
+    const auto smart_limit_inputs = candidate;
+    smart_limit_inputs_ = smart_limit_inputs;
+    for (std::size_t index = 0; index < candidate.values.size(); ++index) {
+        if (!config_.axis_output_enabled[index]) continue;
+        const auto& smart_limit = config_.smart_limit[index];
+        if (!smart_limit.enabled) continue;
+        const auto input = std::clamp(smart_limit_inputs[smart_limit.input_axis], 0.0, 1.0);
+        const auto factor = std::clamp(smart_limit_factor(smart_limit, input), 0.0, 1.0);
+        if (smart_limit.mode == SmartLimitMode::Value) {
+            candidate[index] = smart_limit.target_value +
+                               (candidate[index] - smart_limit.target_value) * factor;
         } else {
             candidate[index] = current_[index] + (candidate[index] - current_[index]) * std::pow(factor, 4.0);
         }
@@ -162,5 +171,6 @@ Axes OutputSignalProcessor::process(
 }
 
 const Axes& OutputSignalProcessor::current() const noexcept { return current_; }
+const Axes& OutputSignalProcessor::smart_limit_inputs() const noexcept { return smart_limit_inputs_; }
 
 } // namespace motion_bridge

@@ -9,6 +9,7 @@ Rectangle {
     required property int axisIndex
     required property string axisName
     required property real axisValue
+    required property var axisValues
     required property var controller
     property bool darkTheme: true
     property real gain: 1.0
@@ -33,14 +34,17 @@ Rectangle {
     readonly property real axisSafeValue: outputSettings && outputSettings.safeValue !== undefined ? outputSettings.safeValue : 0.5
     readonly property bool speedEnabled: outputSettings && outputSettings.speedEnabled === true
     readonly property real speedLimit: outputSettings && outputSettings.maxSpeed !== undefined ? outputSettings.maxSpeed : 4.0
-    readonly property bool remapEnabled: outputSettings && outputSettings.remapEnabled === true
-    readonly property string remapMode: outputSettings && outputSettings.remapMode !== undefined ? outputSettings.remapMode : "value"
-    readonly property real remapTarget: outputSettings && outputSettings.targetValue !== undefined ? outputSettings.targetValue : 0.5
-    readonly property real remapLowerInput: outputSettings && outputSettings.lowerInput !== undefined ? outputSettings.lowerInput : 0.0
-    readonly property real remapLowerFactor: outputSettings && outputSettings.lowerFactor !== undefined ? outputSettings.lowerFactor : 1.0
-    readonly property real remapUpperInput: outputSettings && outputSettings.upperInput !== undefined ? outputSettings.upperInput : 1.0
-    readonly property real remapUpperFactor: outputSettings && outputSettings.upperFactor !== undefined ? outputSettings.upperFactor : 0.0
-    readonly property real remapInputValue: Math.max(0, Math.min(1, axisValue))
+    readonly property var axisLabels: ["L0", "L1", "L2", "R0", "R1", "R2"]
+    readonly property bool smartLimitEnabled: outputSettings && outputSettings.smartLimitEnabled === true
+    readonly property int smartLimitInputAxis: outputSettings && outputSettings.smartLimitInputAxis !== undefined ? outputSettings.smartLimitInputAxis : 0
+    readonly property string smartLimitMode: outputSettings && outputSettings.smartLimitMode !== undefined ? outputSettings.smartLimitMode : "value"
+    readonly property real smartLimitTarget: outputSettings && outputSettings.smartLimitTargetValue !== undefined ? outputSettings.smartLimitTargetValue : 0.5
+    readonly property real smartLimitLowerInput: outputSettings && outputSettings.smartLimitLowerInput !== undefined ? outputSettings.smartLimitLowerInput : 0.25
+    readonly property real smartLimitLowerFactor: outputSettings && outputSettings.smartLimitLowerFactor !== undefined ? outputSettings.smartLimitLowerFactor : 1.0
+    readonly property real smartLimitUpperInput: outputSettings && outputSettings.smartLimitUpperInput !== undefined ? outputSettings.smartLimitUpperInput : 0.9
+    readonly property real smartLimitUpperFactor: outputSettings && outputSettings.smartLimitUpperFactor !== undefined ? outputSettings.smartLimitUpperFactor : 0.0
+    readonly property real smartLimitInputValue: Math.max(0, Math.min(1,
+        axisValues && axisValues.length > smartLimitInputAxis ? axisValues[smartLimitInputAxis] : axisValue))
 
     component CompactToggle: AbstractButton {
         id: toggle
@@ -193,26 +197,26 @@ Rectangle {
             Label { text: root.axisName; color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.7 }
             Item { Layout.fillWidth: true }
             ToolButton {
-                id: remapButton
+                id: smartLimitButton
                 Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
                     speedPopup.close()
-                    root.openPopupNear(remapButton, remapPopup)
+                    root.openPopupNear(smartLimitButton, smartLimitPopup)
                 }
                 background: Rectangle {
                     radius: 6
-                    color: root.remapEnabled ? (root.darkTheme ? "#173728" : "#E8F8EF")
-                                                   : remapButton.hovered ? root.valueSurface : "transparent"
-                    border.width: root.remapEnabled ? 1 : 0
+                    color: root.smartLimitEnabled ? (root.darkTheme ? "#173728" : "#E8F8EF")
+                                                        : smartLimitButton.hovered ? root.valueSurface : "transparent"
+                    border.width: root.smartLimitEnabled ? 1 : 0
                     border.color: root.enabledGreen
                 }
                 contentItem: Canvas {
-                    id: remapIcon
+                    id: smartLimitIcon
                     anchors.fill: parent
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.clearRect(0, 0, width, height)
-                        ctx.strokeStyle = root.remapEnabled ? root.enabledGreen : root.secondaryText
+                        ctx.strokeStyle = root.smartLimitEnabled ? root.enabledGreen : root.secondaryText
                         ctx.lineWidth = 1.4
                         ctx.lineCap = "round"
                         ctx.lineJoin = "round"
@@ -221,16 +225,16 @@ Rectangle {
                         ctx.moveTo(18, 15); ctx.lineTo(4, 15); ctx.lineTo(6.5, 17.5)
                         ctx.stroke()
                     }
-                    Connections { target: root; function onOutputSettingsChanged() { remapIcon.requestPaint() } }
+                    Connections { target: root; function onOutputSettingsChanged() { smartLimitIcon.requestPaint() } }
                 }
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Signal remapping")
+                ToolTip.text: qsTr("Smart limit")
             }
             ToolButton {
                 id: speedButton
                 Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
-                    remapPopup.close()
+                    smartLimitPopup.close()
                     root.openPopupNear(speedButton, speedPopup)
                 }
                 background: Rectangle {
@@ -443,17 +447,17 @@ Rectangle {
     }
 
     Popup {
-        id: remapPopup
+        id: smartLimitPopup
         parent: Overlay.overlay
         width: 278
         padding: 13
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        property real editLowerInput: root.remapLowerInput
-        property real editLowerFactor: root.remapLowerFactor
-        property real editUpperInput: root.remapUpperInput
-        property real editUpperFactor: root.remapUpperFactor
+        property real editLowerInput: root.smartLimitLowerInput
+        property real editLowerFactor: root.smartLimitLowerFactor
+        property real editUpperInput: root.smartLimitUpperInput
+        property real editUpperFactor: root.smartLimitUpperFactor
         function curveFactor(input) {
             if (input <= editLowerInput) return editLowerFactor
             if (input >= editUpperInput) return editUpperFactor
@@ -461,15 +465,15 @@ Rectangle {
             return editLowerFactor + (editUpperFactor - editLowerFactor) * position
         }
         function saveCurve() {
-            root.controller.set_axis_remap_curve(root.axisIndex,
-                                                 editLowerInput, editLowerFactor,
-                                                 editUpperInput, editUpperFactor)
+            root.controller.set_axis_smart_limit_curve(root.axisIndex,
+                                                        editLowerInput, editLowerFactor,
+                                                        editUpperInput, editUpperFactor)
         }
         onOpened: {
-            editLowerInput = root.remapLowerInput
-            editLowerFactor = root.remapLowerFactor
-            editUpperInput = root.remapUpperInput
-            editUpperFactor = root.remapUpperFactor
+            editLowerInput = root.smartLimitLowerInput
+            editLowerFactor = root.smartLimitLowerFactor
+            editUpperInput = root.smartLimitUpperInput
+            editUpperFactor = root.smartLimitUpperFactor
             curveCanvas.requestPaint()
         }
         onEditLowerInputChanged: curveCanvas.requestPaint()
@@ -485,16 +489,31 @@ Rectangle {
             spacing: 8
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: qsTr("ENABLED"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Label { text: qsTr("SMART LIMIT"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 CompactToggle {
-                    checked: root.remapEnabled
-                    onToggled: root.controller.set_axis_remap_enabled(root.axisIndex, checked)
+                    checked: root.smartLimitEnabled
+                    onToggled: root.controller.set_axis_smart_limit_enabled(root.axisIndex, checked)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                enabled: root.smartLimitEnabled
+                Label { text: qsTr("DRIVER AXIS"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                ComboBox {
+                    id: driverAxisChoice
+                    Layout.preferredWidth: 112
+                    Layout.preferredHeight: 28
+                    model: root.axisLabels
+                    currentIndex: root.smartLimitInputAxis
+                    font.pixelSize: 9
+                    onActivated: (index) => root.controller.set_axis_smart_limit_input(root.axisIndex, index)
                 }
             }
             Label {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("X: current axis input  ·  Y: retained output")
+                text: qsTr("X: %1 position  ·  Y: allowed motion").arg(root.axisLabels[root.smartLimitInputAxis])
                 color: root.mutedText
                 font.pixelSize: 9
             }
@@ -503,7 +522,7 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 210
                 Layout.preferredHeight: 146
-                opacity: root.remapEnabled ? 1.0 : 0.45
+                opacity: root.smartLimitEnabled ? 1.0 : 0.45
                 readonly property real plotLeft: 20
                 readonly property real plotRight: width - 20
                 readonly property real plotTop: 14
@@ -530,13 +549,13 @@ Rectangle {
                         }
                         ctx.strokeStyle = root.darkTheme ? "#64748B" : "#8290A3"
                         ctx.strokeRect(graph.plotLeft, graph.plotTop, graph.plotWidth, graph.plotHeight)
-                        ctx.strokeStyle = root.remapEnabled ? root.enabledGreen : root.accent
+                        ctx.strokeStyle = root.smartLimitEnabled ? root.enabledGreen : root.accent
                         ctx.lineWidth = 2.2
                         ctx.lineCap = "round"
-                        const lowerX = graph.plotLeft + remapPopup.editLowerInput * graph.plotWidth
-                        const lowerY = graph.plotBottom - remapPopup.editLowerFactor * graph.plotHeight
-                        const upperX = graph.plotLeft + remapPopup.editUpperInput * graph.plotWidth
-                        const upperY = graph.plotBottom - remapPopup.editUpperFactor * graph.plotHeight
+                        const lowerX = graph.plotLeft + smartLimitPopup.editLowerInput * graph.plotWidth
+                        const lowerY = graph.plotBottom - smartLimitPopup.editLowerFactor * graph.plotHeight
+                        const upperX = graph.plotLeft + smartLimitPopup.editUpperInput * graph.plotWidth
+                        const upperY = graph.plotBottom - smartLimitPopup.editUpperFactor * graph.plotHeight
                         ctx.beginPath()
                         ctx.moveTo(graph.plotLeft, lowerY)
                         ctx.lineTo(lowerX, lowerY)
@@ -552,9 +571,9 @@ Rectangle {
                 Rectangle {
                     id: lowerHandle
                     width: 15; height: 15; radius: 8
-                    x: parent.plotLeft + remapPopup.editLowerInput * parent.plotWidth - width / 2
-                    y: parent.plotBottom - remapPopup.editLowerFactor * parent.plotHeight - height / 2
-                    color: root.remapEnabled ? root.enabledGreen : root.secondaryText
+                    x: parent.plotLeft + smartLimitPopup.editLowerInput * parent.plotWidth - width / 2
+                    y: parent.plotBottom - smartLimitPopup.editLowerFactor * parent.plotHeight - height / 2
+                    color: root.smartLimitEnabled ? root.enabledGreen : root.secondaryText
                     border.width: 2; border.color: root.darkTheme ? "#151C27" : "#FFFFFF"
                     scale: lowerArea.pressed ? 1.18 : lowerArea.containsMouse ? 1.08 : 1.0
                     Behavior on scale { NumberAnimation { duration: 90 } }
@@ -562,26 +581,26 @@ Rectangle {
                         id: lowerArea
                         anchors.centerIn: parent
                         width: 34; height: 34
-                        enabled: root.remapEnabled
+                        enabled: root.smartLimitEnabled
                         hoverEnabled: true
                         cursorShape: Qt.SizeAllCursor
                         onPositionChanged: function(mouse) {
                             if (!pressed) return
                             const point = mapToItem(curveGraph, mouse.x, mouse.y)
-                            remapPopup.editLowerInput = Math.max(0, Math.min(remapPopup.editUpperInput - 0.01,
+                            smartLimitPopup.editLowerInput = Math.max(0, Math.min(smartLimitPopup.editUpperInput - 0.01,
                                 (point.x - curveGraph.plotLeft) / curveGraph.plotWidth))
-                            remapPopup.editLowerFactor = Math.max(0, Math.min(1,
+                            smartLimitPopup.editLowerFactor = Math.max(0, Math.min(1,
                                 1 - (point.y - curveGraph.plotTop) / curveGraph.plotHeight))
                         }
-                        onReleased: remapPopup.saveCurve()
+                        onReleased: smartLimitPopup.saveCurve()
                     }
                 }
                 Rectangle {
                     id: upperHandle
                     width: 15; height: 15; radius: 8
-                    x: parent.plotLeft + remapPopup.editUpperInput * parent.plotWidth - width / 2
-                    y: parent.plotBottom - remapPopup.editUpperFactor * parent.plotHeight - height / 2
-                    color: root.remapEnabled ? root.enabledGreen : root.secondaryText
+                    x: parent.plotLeft + smartLimitPopup.editUpperInput * parent.plotWidth - width / 2
+                    y: parent.plotBottom - smartLimitPopup.editUpperFactor * parent.plotHeight - height / 2
+                    color: root.smartLimitEnabled ? root.enabledGreen : root.secondaryText
                     border.width: 2; border.color: root.darkTheme ? "#151C27" : "#FFFFFF"
                     scale: upperArea.pressed ? 1.18 : upperArea.containsMouse ? 1.08 : 1.0
                     Behavior on scale { NumberAnimation { duration: 90 } }
@@ -589,38 +608,38 @@ Rectangle {
                         id: upperArea
                         anchors.centerIn: parent
                         width: 34; height: 34
-                        enabled: root.remapEnabled
+                        enabled: root.smartLimitEnabled
                         hoverEnabled: true
                         cursorShape: Qt.SizeAllCursor
                         onPositionChanged: function(mouse) {
                             if (!pressed) return
                             const point = mapToItem(curveGraph, mouse.x, mouse.y)
-                            remapPopup.editUpperInput = Math.min(1, Math.max(remapPopup.editLowerInput + 0.01,
+                            smartLimitPopup.editUpperInput = Math.min(1, Math.max(smartLimitPopup.editLowerInput + 0.01,
                                 (point.x - curveGraph.plotLeft) / curveGraph.plotWidth))
-                            remapPopup.editUpperFactor = Math.max(0, Math.min(1,
+                            smartLimitPopup.editUpperFactor = Math.max(0, Math.min(1,
                                 1 - (point.y - curveGraph.plotTop) / curveGraph.plotHeight))
                         }
-                        onReleased: remapPopup.saveCurve()
+                        onReleased: smartLimitPopup.saveCurve()
                     }
                 }
                 Rectangle {
                     width: 9; height: 9; radius: 5
-                    x: parent.plotLeft + root.remapInputValue * parent.plotWidth - width / 2
-                    y: parent.plotBottom - remapPopup.curveFactor(root.remapInputValue) * parent.plotHeight - height / 2
+                    x: parent.plotLeft + root.smartLimitInputValue * parent.plotWidth - width / 2
+                    y: parent.plotBottom - smartLimitPopup.curveFactor(root.smartLimitInputValue) * parent.plotHeight - height / 2
                     color: root.darkTheme ? "#151C27" : "#FFFFFF"
                     border.width: 2
-                    border.color: root.remapEnabled ? root.enabledGreen : root.secondaryText
+                    border.color: root.smartLimitEnabled ? root.enabledGreen : root.secondaryText
                 }
                 Label {
                     x: Math.max(0, Math.min(parent.width - width, lowerHandle.x - width / 2 + lowerHandle.width / 2))
                     y: lowerHandle.y < 18 ? lowerHandle.y + 18 : lowerHandle.y - 14
-                    text: "(" + Math.round(remapPopup.editLowerInput * 100) + "%, " + Math.round(remapPopup.editLowerFactor * 100) + "%)"
+                    text: "(" + Math.round(smartLimitPopup.editLowerInput * 100) + "%, " + Math.round(smartLimitPopup.editLowerFactor * 100) + "%)"
                     color: root.secondaryText; font.pixelSize: 8
                 }
                 Label {
                     x: Math.max(0, Math.min(parent.width - width, upperHandle.x - width / 2 + upperHandle.width / 2))
                     y: upperHandle.y < 18 ? upperHandle.y + 18 : upperHandle.y - 14
-                    text: "(" + Math.round(remapPopup.editUpperInput * 100) + "%, " + Math.round(remapPopup.editUpperFactor * 100) + "%)"
+                    text: "(" + Math.round(smartLimitPopup.editUpperInput * 100) + "%, " + Math.round(smartLimitPopup.editUpperFactor * 100) + "%)"
                     color: root.secondaryText; font.pixelSize: 8
                 }
                 Label { x: 2; y: parent.plotTop - height / 2; text: "100"; color: root.mutedText; font.pixelSize: 7 }
@@ -629,7 +648,7 @@ Rectangle {
                 Label { x: parent.plotRight - width / 2; anchors.bottom: parent.bottom; text: "100%"; color: root.mutedText; font.pixelSize: 8 }
             }
             RowLayout {
-                Layout.fillWidth: true; enabled: root.remapEnabled
+                Layout.fillWidth: true; enabled: root.smartLimitEnabled
                 Label { text: qsTr("MODE"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 RowLayout {
@@ -639,10 +658,10 @@ Rectangle {
                         delegate: Button {
                             id: modeChoice
                             required property var modelData
-                            readonly property bool selected: root.remapMode === modelData.value
+                            readonly property bool selected: root.smartLimitMode === modelData.value
                             Layout.fillWidth: true; Layout.preferredHeight: 27
                             text: modelData.label
-                            onClicked: root.controller.set_axis_remap_mode(root.axisIndex, modelData.value)
+                            onClicked: root.controller.set_axis_smart_limit_mode(root.axisIndex, modelData.value)
                             background: Rectangle {
                                 radius: 6
                                 color: modeChoice.selected
@@ -663,19 +682,19 @@ Rectangle {
             }
             RowLayout {
                 Layout.fillWidth: true
-                visible: root.remapMode === "value"
-                enabled: root.remapEnabled
+                visible: root.smartLimitMode === "value"
+                enabled: root.smartLimitEnabled
                 Label { text: qsTr("TARGET VALUE"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 StableStepper {
                     Layout.preferredWidth: 112
                     from: 0; to: 100; stepSize: 1
-                    value: Math.round(root.remapTarget * 100)
+                    value: Math.round(root.smartLimitTarget * 100)
                     decimals: 0
                     suffixText: "%"
                     numberWidth: 30
                     suffixWidth: 10
-                    onValueModified: (nextValue) => root.controller.set_axis_remap_target(root.axisIndex, nextValue / 100)
+                    onValueModified: (nextValue) => root.controller.set_axis_smart_limit_target(root.axisIndex, nextValue / 100)
                 }
             }
         }
