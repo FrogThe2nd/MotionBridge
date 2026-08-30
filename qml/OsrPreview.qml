@@ -119,6 +119,7 @@ Rectangle {
     component ViewNavButton: Button {
         id: navButton
         required property string glyph
+        required property string tipText
         property color accent: root.mutedColor
         width: 25
         height: 25
@@ -139,6 +140,11 @@ Rectangle {
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+        }
+        AppToolTip {
+            visible: navButton.hovered
+            text: navButton.tipText
+            darkTheme: root.darkTheme
         }
     }
 
@@ -488,22 +494,19 @@ Rectangle {
                 spacing: 5
                 ViewNavButton {
                     glyph: "↶"
+                    tipText: qsTr("Rotate view left 30°")
                     onClicked: root.orbitYaw -= 30
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Rotate view left 30°")
                 }
                 ViewNavButton {
                     glyph: "◆"
+                    tipText: qsTr("Reset oblique view")
                     accent: root.accentColor
                     onClicked: root.resetCamera()
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Reset oblique view")
                 }
                 ViewNavButton {
                     glyph: "↷"
+                    tipText: qsTr("Rotate view right 30°")
                     onClicked: root.orbitYaw += 30
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Rotate view right 30°")
                 }
             }
 
@@ -512,24 +515,21 @@ Rectangle {
                 spacing: 5
                 ViewNavButton {
                     glyph: "X"
+                    tipText: qsTr("Right view")
                     accent: "#E97070"
                     onClicked: root.setAxisView(0, 0)
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Right view")
                 }
                 ViewNavButton {
                     glyph: "Y"
+                    tipText: qsTr("Front view")
                     accent: "#70D59A"
                     onClicked: root.setAxisView(90, 0)
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Front view")
                 }
                 ViewNavButton {
                     glyph: "Z"
+                    tipText: qsTr("Top view")
                     accent: "#6CA9F4"
                     onClicked: root.setAxisView(root.orbitYaw, 89)
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Top view")
                 }
             }
         }

@@ -182,6 +182,7 @@ ApplicationWindow {
     component WindowButton: Button {
         id: control
         required property string glyph
+        property string tipText: ""
         property color hoverColor: window.hoverSurface
         property real glyphSize: 13
         width: 42; height: 36
@@ -199,6 +200,11 @@ ApplicationWindow {
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+        }
+        AppToolTip {
+            visible: control.hovered && control.tipText.length > 0
+            text: control.tipText
+            darkTheme: window.darkTheme
         }
     }
 
@@ -485,7 +491,11 @@ ApplicationWindow {
                 implicitHeight: contentHeight
                 model: portControl.popup.visible ? portControl.delegateModel : null
                 currentIndex: portControl.highlightedIndex
-                ScrollIndicator.vertical: ScrollIndicator { }
+                ScrollBar.vertical: AppScrollBar {
+                    darkTheme: window.darkTheme
+                    policy: ScrollBar.AsNeeded
+                    interactive: false
+                }
             }
             background: Rectangle { radius: 11; color: window.panel; border.color: window.outline }
         }
@@ -546,7 +556,11 @@ ApplicationWindow {
                 implicitHeight: contentHeight
                 model: participantControl.popup.visible ? participantControl.delegateModel : null
                 currentIndex: participantControl.highlightedIndex
-                ScrollIndicator.vertical: ScrollIndicator { }
+                ScrollBar.vertical: AppScrollBar {
+                    darkTheme: window.darkTheme
+                    policy: ScrollBar.AsNeeded
+                    interactive: false
+                }
             }
             background: Rectangle { radius: 11; color: window.panel; border.color: window.outline }
         }
@@ -593,12 +607,11 @@ ApplicationWindow {
                     WindowButton {
                         id: languageButton
                         glyph: languageController.effectiveLanguage === "zh_CN" ? "中" : "EN"
+                        tipText: qsTr("Language")
                         glyphSize: languageController.effectiveLanguage === "zh_CN" ? 12 : 10
                         onClicked: languageMenu.popup(languageButton,
                                                        languageButton.width - languageMenu.width,
                                                        languageButton.height + 4)
-                        ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Language")
                         Menu {
                             id: languageMenu
                             width: 168
@@ -625,9 +638,8 @@ ApplicationWindow {
                     }
                     WindowButton {
                         glyph: window.darkTheme ? "☀" : "☾"
+                        tipText: window.darkTheme ? qsTr("Switch to light theme") : qsTr("Switch to dark theme")
                         onClicked: companion.set_theme(window.darkTheme ? "light" : "dark")
-                        ToolTip.visible: hovered
-                        ToolTip.text: window.darkTheme ? qsTr("Switch to light theme") : qsTr("Switch to dark theme")
                     }
                     WindowButton { glyph: "—"; onClicked: window.showMinimized() }
                     WindowButton { glyph: "✕"; hoverColor: "#B84350"; onClicked: window.close() }
@@ -705,8 +717,14 @@ ApplicationWindow {
                     clip: true
                     contentWidth: availableWidth
                     contentHeight: expandedContent.implicitHeight + 24
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                    ScrollBar.horizontal: AppScrollBar {
+                        darkTheme: window.darkTheme
+                        policy: ScrollBar.AlwaysOff
+                    }
+                    ScrollBar.vertical: AppScrollBar {
+                        darkTheme: window.darkTheme
+                        policy: ScrollBar.AsNeeded
+                    }
 
                     ColumnLayout {
                         id: expandedContent
@@ -759,11 +777,16 @@ ApplicationWindow {
                                             Layout.fillWidth: true; spacing: 7
                                             SerialPortCombo { }
                                             Button {
+                                                id: refreshPortsButton
                                                 Layout.preferredWidth: 38; Layout.preferredHeight: 38
                                                 text: "↻"; onClicked: companion.refresh_usb_ports()
                                                 background: Rectangle { radius: 10; color: parent.hovered ? window.hoverSurface : window.panelAlt; border.color: window.outline }
                                                 contentItem: Label { text: parent.text; color: window.textSecondary; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                                ToolTip.visible: hovered; ToolTip.text: qsTr("Refresh serial ports")
+                                                AppToolTip {
+                                                    visible: refreshPortsButton.hovered
+                                                    text: qsTr("Refresh serial ports")
+                                                    darkTheme: window.darkTheme
+                                                }
                                             }
                                         }
                                     }
@@ -1012,6 +1035,7 @@ ApplicationWindow {
                         }
                         Item { Layout.fillWidth: true }
                         Button {
+                            id: alwaysOnTopButton
                             Layout.preferredWidth: 74
                             Layout.preferredHeight: 28
                             text: qsTr("TOP")
@@ -1041,8 +1065,11 @@ ApplicationWindow {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            ToolTip.visible: hovered
-                            ToolTip.text: qsTr("Always on top")
+                            AppToolTip {
+                                visible: alwaysOnTopButton.hovered
+                                text: qsTr("Always on top")
+                                darkTheme: window.darkTheme
+                            }
                         }
                         WindowButton { glyph: "✕"; hoverColor: "#B84350"; onClicked: previewWindow.hide() }
                     }

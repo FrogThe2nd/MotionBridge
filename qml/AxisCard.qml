@@ -227,8 +227,11 @@ Rectangle {
                     }
                     Connections { target: root; function onOutputSettingsChanged() { smartLimitIcon.requestPaint() } }
                 }
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Smart limit")
+                AppToolTip {
+                    visible: smartLimitButton.hovered
+                    text: qsTr("Smart limit")
+                    darkTheme: root.darkTheme
+                }
             }
             ToolButton {
                 id: speedButton
@@ -269,8 +272,11 @@ Rectangle {
                     }
                     Connections { target: root; function onOutputSettingsChanged() { speedIcon.requestPaint() } }
                 }
-                ToolTip.visible: hovered
-                ToolTip.text: root.axisOutputEnabled ? qsTr("Speed limit") : qsTr("Axis output off")
+                AppToolTip {
+                    visible: speedButton.hovered
+                    text: root.axisOutputEnabled ? qsTr("Speed limit") : qsTr("Axis output off")
+                    darkTheme: root.darkTheme
+                }
             }
             Label { text: Math.round(root.axisValue * 9999).toString().padStart(4, "0"); color: root.primaryText; font.family: "Cascadia Mono"; font.pixelSize: 17; font.weight: Font.DemiBold }
         }
@@ -509,6 +515,81 @@ Rectangle {
                     currentIndex: root.smartLimitInputAxis
                     font.pixelSize: 9
                     onActivated: (index) => root.controller.set_axis_smart_limit_input(root.axisIndex, index)
+                    opacity: enabled ? 1.0 : 0.5
+                    contentItem: Label {
+                        leftPadding: 10
+                        rightPadding: 26
+                        text: driverAxisChoice.displayText
+                        color: root.primaryText
+                        font.pixelSize: 9
+                        font.weight: Font.DemiBold
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    indicator: Canvas {
+                        x: driverAxisChoice.width - width - 9
+                        y: (driverAxisChoice.height - height) / 2
+                        width: 10; height: 6
+                        onPaint: {
+                            const ctx = getContext("2d")
+                            ctx.clearRect(0, 0, width, height)
+                            ctx.strokeStyle = root.secondaryText
+                            ctx.lineWidth = 1.4
+                            ctx.lineCap = "round"
+                            ctx.lineJoin = "round"
+                            ctx.beginPath()
+                            ctx.moveTo(1, 1); ctx.lineTo(width / 2, height - 1); ctx.lineTo(width - 1, 1)
+                            ctx.stroke()
+                        }
+                    }
+                    background: Rectangle {
+                        radius: 7
+                        color: root.valueSurface
+                        border.width: 1
+                        border.color: driverAxisChoice.activeFocus
+                                      ? root.accent
+                                      : (root.darkTheme ? "#344154" : "#C8D2DE")
+                    }
+                    delegate: ItemDelegate {
+                        id: driverAxisItem
+                        required property var modelData
+                        required property int index
+                        width: driverAxisChoice.width - 8
+                        height: 26
+                        highlighted: driverAxisChoice.highlightedIndex === index
+                        background: Rectangle {
+                            radius: 5
+                            color: driverAxisItem.highlighted
+                                   ? (root.darkTheme ? "#26354A" : "#E2EAF4")
+                                   : driverAxisItem.hovered ? root.valueSurface : "transparent"
+                        }
+                        contentItem: Label {
+                            leftPadding: 7
+                            text: driverAxisItem.modelData
+                            color: driverAxisItem.index === driverAxisChoice.currentIndex ? root.accent : root.primaryText
+                            font.pixelSize: 9
+                            font.weight: driverAxisItem.index === driverAxisChoice.currentIndex ? Font.DemiBold : Font.Normal
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    popup: Popup {
+                        y: driverAxisChoice.height + 4
+                        width: driverAxisChoice.width
+                        implicitHeight: contentItem.implicitHeight + topPadding + bottomPadding
+                        padding: 4
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                        contentItem: ListView {
+                            clip: true
+                            implicitHeight: contentHeight
+                            model: driverAxisChoice.popup.visible ? driverAxisChoice.delegateModel : null
+                            currentIndex: driverAxisChoice.highlightedIndex
+                        }
+                        background: Rectangle {
+                            radius: 8
+                            color: root.darkTheme ? "#151C27" : "#FFFFFF"
+                            border.width: 1
+                            border.color: root.darkTheme ? "#344154" : "#C8D2DE"
+                        }
+                    }
                 }
             }
             Label {

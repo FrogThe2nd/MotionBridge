@@ -101,6 +101,8 @@ if(MOTION_BRIDGE_BUILD_GUI)
         QML_FILES
             qml/Main.qml
             qml/AxisCard.qml
+            qml/AppScrollBar.qml
+            qml/AppToolTip.qml
             qml/LinkRod.qml
             qml/OsrPreview.qml
         RESOURCES
