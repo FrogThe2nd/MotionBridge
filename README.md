@@ -12,7 +12,7 @@ Motion Bridge has one real-time worker thread for file watching, motion calculat
 - USB serial, Wi-Fi UDP (`tcode.local:8000` by default), Intiface Desktop, and direct Handy output.
 - A transport-independent fixed-rate output clock with measured TCode intervals, soft start, cross-axis smart limits, per-axis speed limits, output switches, and configurable safe positions. Axis cards and the 3D preview always follow the final protected signal, whether hardware output is armed or not.
 - Separate SR6/OSR 3D viewer with optional always-on-top mode.
-- Per-axis gain (output travel around the selected center) and output-range controls, saved beside the executable in portable mode.
+- Per-axis gain (output travel around the selected center) and output-range controls, plus an optional L0 preferred-travel optimizer that learns a stable main stroke, enlarges only short motion, and leaves extra motion headroom. Settings are saved beside the executable in portable mode.
 - Light and dark themes, plus English, Simplified Chinese, and system-language selection.
 - Safe startup, stream-loss hold and smooth return to center. Device output always starts disarmed.
 

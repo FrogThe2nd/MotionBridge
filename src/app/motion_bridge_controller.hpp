@@ -31,6 +31,12 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QVariantList axisGains READ axis_gains NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMinimums READ axis_minimums NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMaximums READ axis_maximums NOTIFY settingsChanged)
+    Q_PROPERTY(bool l0PreferredTravelEnabled READ l0_preferred_travel_enabled NOTIFY settingsChanged)
+    Q_PROPERTY(int l0PreferredTravel READ l0_preferred_travel NOTIFY settingsChanged)
+    Q_PROPERTY(QString l0TravelState READ l0_travel_state NOTIFY snapshotChanged)
+    Q_PROPERTY(int l0ObservedTravel READ l0_observed_travel NOTIFY snapshotChanged)
+    Q_PROPERTY(double l0AutomaticGain READ l0_automatic_gain NOTIFY snapshotChanged)
+    Q_PROPERTY(int l0StableHalfStrokes READ l0_stable_half_strokes NOTIFY snapshotChanged)
     Q_PROPERTY(int outputRateHz READ output_rate_hz NOTIFY settingsChanged)
     Q_PROPERTY(bool softStartEnabled READ soft_start_enabled NOTIFY settingsChanged)
     Q_PROPERTY(int softStartDurationMs READ soft_start_duration_ms NOTIFY settingsChanged)
@@ -64,6 +70,12 @@ public:
     [[nodiscard]] QVariantList axis_gains() const;
     [[nodiscard]] QVariantList axis_minimums() const;
     [[nodiscard]] QVariantList axis_maximums() const;
+    [[nodiscard]] bool l0_preferred_travel_enabled() const;
+    [[nodiscard]] int l0_preferred_travel() const;
+    [[nodiscard]] QString l0_travel_state() const;
+    [[nodiscard]] int l0_observed_travel() const;
+    [[nodiscard]] double l0_automatic_gain() const;
+    [[nodiscard]] int l0_stable_half_strokes() const;
     [[nodiscard]] int output_rate_hz() const;
     [[nodiscard]] bool soft_start_enabled() const;
     [[nodiscard]] int soft_start_duration_ms() const;
@@ -82,6 +94,9 @@ public:
     Q_INVOKABLE void set_handy_connection_key(const QString& key);
     Q_INVOKABLE void set_axis_gain(int axis, double value);
     Q_INVOKABLE void set_axis_range(int axis, double minimum, double maximum);
+    Q_INVOKABLE void set_l0_preferred_travel_enabled(bool enabled);
+    Q_INVOKABLE void set_l0_preferred_travel(int value);
+    Q_INVOKABLE void reset_l0_travel_learning();
     Q_INVOKABLE void set_output_rate_hz(int value);
     Q_INVOKABLE void set_soft_start_enabled(bool enabled);
     Q_INVOKABLE void set_soft_start_duration_ms(int value);
@@ -132,6 +147,12 @@ private:
     QVariantList axis_gains_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
     QVariantList axis_minimums_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     QVariantList axis_maximums_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    bool l0_preferred_travel_enabled_{};
+    int l0_preferred_travel_{6000};
+    QString l0_travel_state_{"disabled"};
+    int l0_observed_travel_{};
+    double l0_automatic_gain_{1.0};
+    int l0_stable_half_strokes_{};
     int output_rate_hz_{50};
     bool soft_start_enabled_{true};
     int soft_start_duration_ms_{600};

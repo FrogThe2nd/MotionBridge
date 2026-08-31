@@ -77,10 +77,6 @@ struct MotionFrame {
     // Game adapters may declare that L0 is normalized by the live reference
     // axis length instead of the generic human 8-27 cm range.
     bool l0_reference_length{};
-    // Nonhuman rigs can be much longer than the motion visible in a game
-    // animation. In this mode the reference chain supplies direction and
-    // contact only; L0 is normalised from this action's observed axial travel.
-    bool l0_activity_window{};
     // A calibrated game profile can supply a local signed stroke range. This
     // takes precedence over the generic or full-reference L0 mapping.
     std::optional<double> direct_l0_min_meters;
@@ -138,6 +134,23 @@ struct AxisTuning {
     bool inverted{};
 };
 
+enum class L0TravelState { Disabled, Learning, Locked, Limited };
+
+struct L0TravelPreferenceConfig {
+    bool enabled{};
+    // Peak-to-peak L0 excursion in normalized TCode units. A value of 0.6
+    // corresponds to a preferred travel of 6000 on the 0000-9999 display.
+    double preferred_travel{0.6};
+    double maximum_gain{4.0};
+};
+
+struct L0TravelStatus {
+    L0TravelState state{L0TravelState::Disabled};
+    double observed_travel{};
+    double applied_gain{1.0};
+    unsigned int stable_half_strokes{};
+};
+
 struct SafetyConfig {
     std::chrono::milliseconds hold_for{250};
     std::chrono::milliseconds return_for{600};
@@ -165,6 +178,7 @@ struct EngineSnapshot {
     MotionState state{MotionState::Idle};
     Axes raw_axes;
     Axes device_axes;
+    L0TravelStatus l0_travel;
     ContactStatus contact;
     std::string action_id;
     std::string action_category;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 namespace motion_bridge {
 namespace {
@@ -11,8 +12,12 @@ constexpr double kEpsilon = 1e-8;
 constexpr double kPlaneIntersectionBlendStartAlignment = 0.25;
 constexpr double kPlaneIntersectionFullAlignment = 0.75;
 constexpr double kPlaneIntersectionMaximumCorrectionFraction = 0.25;
-constexpr double kActivityDirectionThresholdMeters = 0.00075;
-constexpr double kActivityMinimumStrokeMeters = 0.005;
+constexpr double kL0TravelReversalHysteresis = 0.008;
+constexpr double kL0TravelMinimumHalfStroke = 0.02;
+constexpr double kL0TravelAbsoluteTolerance = 0.015;
+constexpr std::size_t kL0TravelCandidateLimit = 8;
+constexpr std::size_t kL0TravelRequiredStableHalfStrokes = 6;
+constexpr auto kL0TravelTransitionDuration = std::chrono::microseconds{500000};
 
 [[nodiscard]] Vec3 add(const Vec3 left, const Vec3 right) { return {left.x + right.x, left.y + right.y, left.z + right.z}; }
 [[nodiscard]] Vec3 subtract(const Vec3 left, const Vec3 right) { return {left.x - right.x, left.y - right.y, left.z - right.z}; }
@@ -67,6 +72,12 @@ constexpr double kActivityMinimumStrokeMeters = 0.005;
 [[nodiscard]] double smoothstep01(const double value) {
     const auto t = clamp01(value);
     return t * t * (3.0 - 2.0 * t);
+}
+[[nodiscard]] double median(std::vector<double> values) {
+    if (values.empty()) return 0.0;
+    std::sort(values.begin(), values.end());
+    const auto middle = values.size() / 2;
+    return values.size() % 2 == 0 ? (values[middle - 1] + values[middle]) * 0.5 : values[middle];
 }
 [[nodiscard]] const Participant* participant(const MotionFrame& frame, const std::string& key, const std::string& required_bone) {
     if (!key.empty()) {
@@ -217,13 +228,153 @@ void MotionEngine::set_contact_config(ContactConfig contact) {
     pitch_baseline_.reset();
     gain_binding_key_.clear();
     gain_envelope_valid_.fill(false);
-    l0_activity_binding_key_.clear();
-    l0_activity_has_sample_ = false;
-    l0_activity_ready_at_.reset();
+    l0_travel_cache_.clear();
+    reset_l0_travel_live_state({});
 }
 void MotionEngine::set_axis_tuning(std::array<AxisTuning, 6> tuning) { tuning_ = std::move(tuning); }
+void MotionEngine::set_l0_travel_preference(L0TravelPreferenceConfig config) {
+    config.preferred_travel = std::clamp(config.preferred_travel, 0.1, 0.9);
+    config.maximum_gain = std::clamp(config.maximum_gain, 1.0, 4.0);
+    l0_travel_config_ = config;
+    if (!config.enabled) {
+        l0_travel_status_ = {};
+        l0_optimized_center_.reset();
+    }
+}
+void MotionEngine::reset_l0_travel_learning() {
+    if (!l0_travel_profile_key_.empty()) l0_travel_cache_.erase(l0_travel_profile_key_);
+    const auto active_key = l0_travel_profile_key_;
+    reset_l0_travel_live_state(active_key);
+}
 const ContactConfig& MotionEngine::contact_config() const noexcept { return contact_; }
 const std::array<AxisTuning, 6>& MotionEngine::axis_tuning() const noexcept { return tuning_; }
+const L0TravelPreferenceConfig& MotionEngine::l0_travel_preference() const noexcept { return l0_travel_config_; }
+
+void MotionEngine::reset_l0_travel_live_state(const std::string& profile_key) {
+    l0_travel_profile_key_ = profile_key;
+    l0_travel_profile_.reset();
+    l0_travel_transition_at_.reset();
+    l0_travel_has_sample_ = false;
+    l0_travel_anchor_ = 0.0;
+    l0_travel_extremum_ = 0.0;
+    l0_travel_direction_ = 0;
+    l0_travel_last_turning_point_.reset();
+    l0_travel_half_strokes_.clear();
+    l0_optimized_center_.reset();
+    l0_travel_status_ = l0_travel_config_.enabled
+        ? L0TravelStatus{L0TravelState::Learning, 0.0, 1.0, 0}
+        : L0TravelStatus{};
+    if (const auto cached = l0_travel_cache_.find(profile_key); cached != l0_travel_cache_.end()) {
+        l0_travel_profile_ = cached->second;
+    }
+}
+
+void MotionEngine::record_l0_turning_point(const double value, const std::chrono::microseconds now) {
+    if (l0_travel_last_turning_point_) {
+        const auto low = std::min(*l0_travel_last_turning_point_, value);
+        const auto high = std::max(*l0_travel_last_turning_point_, value);
+        if (high - low >= kL0TravelMinimumHalfStroke) {
+            l0_travel_half_strokes_.emplace_back(low, high);
+            if (l0_travel_half_strokes_.size() > kL0TravelCandidateLimit) {
+                l0_travel_half_strokes_.erase(l0_travel_half_strokes_.begin());
+            }
+        }
+    }
+    l0_travel_last_turning_point_ = value;
+
+    std::vector<double> travels;
+    travels.reserve(l0_travel_half_strokes_.size());
+    for (const auto& [low, high] : l0_travel_half_strokes_) travels.push_back(high - low);
+    const auto candidate_travel = median(travels);
+    l0_travel_status_.observed_travel = candidate_travel;
+    l0_travel_status_.stable_half_strokes = static_cast<unsigned int>(l0_travel_half_strokes_.size());
+    if (l0_travel_half_strokes_.size() < kL0TravelRequiredStableHalfStrokes) return;
+    const auto tolerance = std::max(kL0TravelAbsoluteTolerance, candidate_travel * 0.2);
+    std::vector<double> stable_travels;
+    std::vector<double> stable_centers;
+    for (const auto& [low, high] : l0_travel_half_strokes_) {
+        const auto travel = high - low;
+        if (std::abs(travel - candidate_travel) > tolerance) continue;
+        stable_travels.push_back(travel);
+        stable_centers.push_back((low + high) * 0.5);
+    }
+    l0_travel_status_.stable_half_strokes = static_cast<unsigned int>(stable_travels.size());
+    if (stable_travels.size() < kL0TravelRequiredStableHalfStrokes) return;
+
+    l0_travel_profile_ = L0TravelProfile{median(stable_centers), median(stable_travels)};
+    l0_travel_cache_[l0_travel_profile_key_] = *l0_travel_profile_;
+    l0_travel_transition_at_ = now;
+    // Manual Gain must begin observing the newly expanded primary motion,
+    // rather than retaining the smaller pre-learning envelope.
+    gain_envelope_valid_[0] = false;
+}
+
+double MotionEngine::optimize_l0(const double value, const std::string& profile_key, const std::chrono::microseconds now) {
+    l0_optimized_center_.reset();
+    if (!l0_travel_config_.enabled) {
+        l0_travel_status_ = {};
+        return value;
+    }
+    if (profile_key != l0_travel_profile_key_) reset_l0_travel_live_state(profile_key);
+
+    if (!l0_travel_profile_) {
+        if (!l0_travel_has_sample_) {
+            l0_travel_has_sample_ = true;
+            l0_travel_anchor_ = value;
+            l0_travel_extremum_ = value;
+        } else if (l0_travel_direction_ == 0) {
+            if (value >= l0_travel_anchor_ + kL0TravelReversalHysteresis) {
+                l0_travel_direction_ = 1;
+                l0_travel_extremum_ = value;
+            } else if (value <= l0_travel_anchor_ - kL0TravelReversalHysteresis) {
+                l0_travel_direction_ = -1;
+                l0_travel_extremum_ = value;
+            }
+        } else if (l0_travel_direction_ > 0) {
+            if (value > l0_travel_extremum_) {
+                l0_travel_extremum_ = value;
+            } else if (value <= l0_travel_extremum_ - kL0TravelReversalHysteresis) {
+                record_l0_turning_point(l0_travel_extremum_, now);
+                l0_travel_direction_ = -1;
+                l0_travel_extremum_ = value;
+            }
+        } else {
+            if (value < l0_travel_extremum_) {
+                l0_travel_extremum_ = value;
+            } else if (value >= l0_travel_extremum_ + kL0TravelReversalHysteresis) {
+                record_l0_turning_point(l0_travel_extremum_, now);
+                l0_travel_direction_ = 1;
+                l0_travel_extremum_ = value;
+            }
+        }
+    }
+
+    if (!l0_travel_profile_) {
+        l0_travel_status_.state = L0TravelState::Learning;
+        l0_travel_status_.applied_gain = 1.0;
+        return value;
+    }
+
+    const auto source_travel = std::max(l0_travel_profile_->travel, kEpsilon);
+    const auto desired_gain = l0_travel_config_.preferred_travel / source_travel;
+    const auto gain = std::clamp(desired_gain, 1.0, l0_travel_config_.maximum_gain);
+    const auto expanded_travel = std::min(1.0, source_travel * gain);
+    const auto half_travel = expanded_travel * 0.5;
+    const auto target_center = std::clamp(l0_travel_profile_->center, half_travel, 1.0 - half_travel);
+    l0_optimized_center_ = target_center;
+    const auto optimized = clamp01(target_center + (value - l0_travel_profile_->center) * gain);
+    l0_travel_status_.observed_travel = source_travel;
+    l0_travel_status_.applied_gain = gain;
+    l0_travel_status_.stable_half_strokes = static_cast<unsigned int>(kL0TravelRequiredStableHalfStrokes);
+    l0_travel_status_.state = desired_gain > l0_travel_config_.maximum_gain + kEpsilon
+        ? L0TravelState::Limited : L0TravelState::Locked;
+    if (!l0_travel_transition_at_) return optimized;
+    const auto elapsed = std::max(std::chrono::microseconds::zero(), now - *l0_travel_transition_at_);
+    const auto blend = smoothstep01(static_cast<double>(elapsed.count()) /
+                                    static_cast<double>(kL0TravelTransitionDuration.count()));
+    if (elapsed >= kL0TravelTransitionDuration) l0_travel_transition_at_.reset();
+    return value + (optimized - value) * blend;
+}
 
 std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) {
     const auto* reference = participant(frame, contact_.reference_participant, contact_.origin_bone);
@@ -312,6 +463,11 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
             + frame.target_frame->origin_bone + ":" + frame.target_frame->forward_bone + ":"
             + frame.target_frame->left_bone + ":" + frame.target_frame->right_bone + ":"
             + frame.target_frame->translation_mode : "single_bone");
+    const auto l0_profile_key = frame.game_id + "|" + frame.action_id + "|" + reference->skeleton_id + "|"
+        + target_owner->skeleton_id + "|" + contact_.origin_bone + "|" + contact_.direction_bone + "|"
+        + contact_.tip_bone + "|" + contact_.target_bone + "|" + contact_.target_secondary_bone + "|"
+        + (frame.target_frame ? frame.target_frame->mode + ":" + frame.target_frame->source_bone + ":"
+            + frame.target_frame->origin_bone + ":" + frame.target_frame->translation_mode : "single_bone");
     const auto binding_changed = binding_key != angle_binding_key_;
     if (binding_changed || !twist_baseline_ || !roll_baseline_ || !pitch_baseline_) {
         twist_baseline_ = wrapped_twist;
@@ -334,50 +490,10 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
             ? range01(axial, 0.0, length)
             : range01(axial, contact_.l0_min_meters, contact_.l0_max_meters);
     raw[0] = absolute_l0;
-    if (frame.l0_activity_window) {
-        // Nonhuman appendages can be far longer than the part which actually
-        // moves in a loop.  Learn the loop's real axial travel instead of
-        // treating the full mesh chain as a toy stroke range.
-        if (l0_activity_binding_key_ != binding_key) {
-            l0_activity_binding_key_ = binding_key;
-            l0_activity_min_ = axial;
-            l0_activity_max_ = axial;
-            l0_activity_last_ = axial;
-            l0_activity_direction_ = 0;
-            l0_activity_reversals_ = 0;
-            l0_activity_has_sample_ = true;
-            l0_activity_ready_at_.reset();
-        } else if (l0_activity_has_sample_) {
-            l0_activity_min_ = std::min(l0_activity_min_, axial);
-            l0_activity_max_ = std::max(l0_activity_max_, axial);
-            const auto delta = axial - l0_activity_last_;
-            const auto direction = delta > kActivityDirectionThresholdMeters ? 1
-                : delta < -kActivityDirectionThresholdMeters ? -1 : 0;
-            if (direction != 0) {
-                if (l0_activity_direction_ != 0 && direction != l0_activity_direction_) {
-                    ++l0_activity_reversals_;
-                }
-                l0_activity_direction_ = direction;
-            }
-            l0_activity_last_ = axial;
-            if (!l0_activity_ready_at_
-                && l0_activity_reversals_ >= 2
-                && l0_activity_max_ - l0_activity_min_ >= kActivityMinimumStrokeMeters) {
-                l0_activity_ready_at_ = frame.monotonic_time;
-            }
-        }
-        if (l0_activity_ready_at_) {
-            const auto learned_l0 = range01(axial, l0_activity_min_, l0_activity_max_);
-            // One short blend keeps the source's initial absolute reading from
-            // becoming a hard jump when a complete in-game cycle is known.
-            const auto elapsed = frame.monotonic_time - *l0_activity_ready_at_;
-            const auto blend = std::clamp(static_cast<double>(elapsed.count()) / 300000.0, 0.0, 1.0);
-            raw[0] = absolute_l0 + (learned_l0 - absolute_l0) * blend;
-        }
-    }
     // Per-action calibration describes the game skeleton's local direction;
     // the global control remains a user override, so two inversions cancel.
     if (contact_.invert_l0 != frame.direct_l0_inverted) raw[0] = 1.0 - raw[0];
+    raw[0] = optimize_l0(raw[0], l0_profile_key, frame.monotonic_time);
     raw[1] = symmetric01(dot(translation_delta, *reference_forward), contact_.lateral_range_meters);
     raw[2] = symmetric01(dot(translation_delta, *reference_right), contact_.lateral_range_meters);
     raw[3] = symmetric01(twist, contact_.twist_range_degrees);
@@ -386,7 +502,7 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     for (std::size_t index = 0; index < raw.values.size(); ++index) {
         if (!frame.active_axes[index]) raw[index] = 0.5;
     }
-    return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw, frame.active_axes, binding_key),
+    return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw, frame.active_axes, binding_key), l0_travel_status_,
         {true, contact_valid, contact_valid ? "ok" : "outside_contact_radius", length, radius, axial, radial_distance, twist, roll, pitch,
             bilateral ? "bilateral_reference_axis"
                 : plane_intersection_blended ? "target_plane_blended"
@@ -413,7 +529,9 @@ Axes MotionEngine::tune(const Axes& raw, const std::array<bool, 6>& active_axes,
                 gain_max_[index] = std::max(gain_max_[index], raw[index]);
             }
         }
-        const auto gain_center = gain_envelope_valid_[index]
+        const auto gain_center = index == 0 && l0_optimized_center_
+            ? *l0_optimized_center_
+            : gain_envelope_valid_[index]
             ? (gain_min_[index] + gain_max_[index]) * 0.5
             : tuning_[index].center;
         result[index] = tune_value(raw[index], tuning_[index], gain_center);
@@ -437,7 +555,7 @@ EngineSnapshot MotionEngine::process(const MotionFrame& frame) {
 }
 
 EngineSnapshot MotionEngine::process_missing(const std::chrono::microseconds now) {
-    if (!last_valid_) return {0, now, MotionState::Idle, {}, {}, {false, false, "no_active_contact"}, {}, {}};
+    if (!last_valid_) return {0, now, MotionState::Idle, {}, {}, {}, {false, false, "no_active_contact"}, {}, {}};
     const auto elapsed = now - last_valid_time_;
     if (elapsed <= safety_.hold_for) {
         auto snapshot = *last_valid_; snapshot.monotonic_time = now; snapshot.state = MotionState::Holding; snapshot.contact.valid = false; snapshot.contact.reason = "hold"; return snapshot;
@@ -463,6 +581,15 @@ const char* to_string(const MotionState state) noexcept {
     case MotionState::Returning: return "returning";
     case MotionState::Fault: return "fault";
     default: return "idle";
+    }
+}
+
+const char* to_string(const L0TravelState state) noexcept {
+    switch (state) {
+    case L0TravelState::Learning: return "learning";
+    case L0TravelState::Locked: return "locked";
+    case L0TravelState::Limited: return "limited";
+    default: return "disabled";
     }
 }
 

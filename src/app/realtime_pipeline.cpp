@@ -114,6 +114,35 @@ void RealtimePipeline::set_axis_range(const int axis, const double minimum, cons
     publish_axis_ranges();
 }
 
+void RealtimePipeline::set_l0_preferred_travel_enabled(const bool enabled) {
+    auto config = engine_.l0_travel_preference();
+    if (config.enabled == enabled) return;
+    config.enabled = enabled;
+    engine_.set_l0_travel_preference(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue("motion/L0/preferredTravelEnabled", enabled);
+    last_ui_snapshot_.reset();
+    publish_l0_travel_preference();
+}
+
+void RealtimePipeline::set_l0_preferred_travel(const int value) {
+    const auto normalized_value = std::clamp(value, 1000, 9000);
+    auto config = engine_.l0_travel_preference();
+    const auto preferred = static_cast<double>(normalized_value) / 10000.0;
+    if (std::abs(config.preferred_travel - preferred) < 0.0001) return;
+    config.preferred_travel = preferred;
+    engine_.set_l0_travel_preference(config);
+    auto settings = motion_bridge_settings();
+    settings.setValue("motion/L0/preferredTravel", normalized_value);
+    last_ui_snapshot_.reset();
+    publish_l0_travel_preference();
+}
+
+void RealtimePipeline::reset_l0_travel_learning() {
+    engine_.reset_l0_travel_learning();
+    last_ui_snapshot_.reset();
+}
+
 void RealtimePipeline::set_output_rate_hz(const int value) {
     const auto next = std::clamp(value, 20, 100);
     if (output_rate_hz_ == next) return;
@@ -348,7 +377,11 @@ void RealtimePipeline::on_output_tick() {
 
 void RealtimePipeline::publish_snapshot() {
     if (last_ui_snapshot_) {
-        bool changed = last_ui_snapshot_->state != snapshot_.state || last_ui_snapshot_->action_id != snapshot_.action_id;
+        bool changed = last_ui_snapshot_->state != snapshot_.state || last_ui_snapshot_->action_id != snapshot_.action_id ||
+            last_ui_snapshot_->l0_travel.state != snapshot_.l0_travel.state ||
+            last_ui_snapshot_->l0_travel.stable_half_strokes != snapshot_.l0_travel.stable_half_strokes ||
+            std::abs(last_ui_snapshot_->l0_travel.applied_gain - snapshot_.l0_travel.applied_gain) > 0.0001 ||
+            std::abs(last_ui_snapshot_->l0_travel.observed_travel - snapshot_.l0_travel.observed_travel) > 0.0001;
         for (std::size_t index = 0; index < snapshot_.device_axes.values.size() && !changed; ++index) {
             changed = std::abs(last_ui_snapshot_->device_axes[index] - snapshot_.device_axes[index]) > 0.0001 ||
                 std::abs(last_ui_snapshot_->raw_axes[index] - snapshot_.raw_axes[index]) > 0.0001;
@@ -361,7 +394,13 @@ void RealtimePipeline::publish_snapshot() {
                         reference_plane_label_,
                         axes_to_variant(snapshot_.raw_axes),
                         axes_to_variant(output_processor_.smart_limit_inputs()),
-                        axes_to_variant(snapshot_.device_axes));
+                        axes_to_variant(snapshot_.device_axes),
+                        QVariantMap{
+                            {"state", QString::fromLatin1(to_string(snapshot_.l0_travel.state))},
+                            {"observedTravel", static_cast<int>(std::lround(snapshot_.l0_travel.observed_travel * 10000.0))},
+                            {"automaticGain", snapshot_.l0_travel.applied_gain},
+                            {"stableHalfStrokes", static_cast<int>(snapshot_.l0_travel.stable_half_strokes)},
+                        });
 }
 
 void RealtimePipeline::save_settings() {
@@ -465,6 +504,12 @@ void RealtimePipeline::load_settings() {
     engine_.set_contact_config(contact);
     input_->set_reference_participant(QString::fromStdString(contact.reference_participant));
     reset_participant_cache();
+    auto l0_travel = engine_.l0_travel_preference();
+    l0_travel.enabled = settings.value("motion/L0/preferredTravelEnabled", false).toBool();
+    l0_travel.preferred_travel = static_cast<double>(
+        std::clamp(settings.value("motion/L0/preferredTravel", 6000).toInt(), 1000, 9000)) / 10000.0;
+    l0_travel.maximum_gain = 4.0;
+    engine_.set_l0_travel_preference(l0_travel);
     auto tuning = engine_.axis_tuning();
     for (int index = 0; index < 6; ++index) {
         auto& item = tuning[static_cast<std::size_t>(index)]; const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(index)]);
@@ -480,6 +525,7 @@ void RealtimePipeline::load_settings() {
     publish_connection_settings();
     publish_axis_gains();
     publish_axis_ranges();
+    publish_l0_travel_preference();
     publish_output_processing_settings();
     publish_reference_participant();
     emit reference_participants_changed(reference_participants_);
@@ -505,6 +551,12 @@ void RealtimePipeline::publish_axis_ranges() {
         maximums.push_back(item.output_max);
     }
     emit axis_ranges_changed(minimums, maximums);
+}
+
+void RealtimePipeline::publish_l0_travel_preference() {
+    const auto& config = engine_.l0_travel_preference();
+    emit l0_travel_preference_changed(config.enabled,
+        static_cast<int>(std::lround(config.preferred_travel * 10000.0)));
 }
 
 void RealtimePipeline::publish_output_processing_settings() {

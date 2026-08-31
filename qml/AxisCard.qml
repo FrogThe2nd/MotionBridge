@@ -16,6 +16,12 @@ Rectangle {
     property real outputMinimum: 0.0
     property real outputMaximum: 1.0
     property var outputSettings: ({})
+    property bool l0PreferredTravelEnabled: false
+    property int l0PreferredTravel: 6000
+    property string l0TravelState: "disabled"
+    property int l0ObservedTravel: 0
+    property real l0AutomaticGain: 1.0
+    property int l0StableHalfStrokes: 0
     Layout.fillWidth: true
     Layout.preferredHeight: 128
     radius: 15
@@ -45,6 +51,13 @@ Rectangle {
     readonly property real smartLimitUpperFactor: outputSettings && outputSettings.smartLimitUpperFactor !== undefined ? outputSettings.smartLimitUpperFactor : 0.0
     readonly property real smartLimitInputValue: Math.max(0, Math.min(1,
         axisValues && axisValues.length > smartLimitInputAxis ? axisValues[smartLimitInputAxis] : axisValue))
+
+    function l0TravelStatusText() {
+        if (!root.l0PreferredTravelEnabled || root.l0TravelState === "disabled") return qsTr("Off")
+        if (root.l0TravelState === "learning") return qsTr("Learning · %1/6").arg(Math.min(6, root.l0StableHalfStrokes))
+        if (root.l0TravelState === "limited") return qsTr("4× limit · %1 travel").arg(root.l0ObservedTravel.toString().padStart(4, "0"))
+        return qsTr("Locked · %1×").arg(root.l0AutomaticGain.toFixed(2))
+    }
 
     component CompactToggle: AbstractButton {
         id: toggle
@@ -197,10 +210,54 @@ Rectangle {
             Label { text: root.axisName; color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.7 }
             Item { Layout.fillWidth: true }
             ToolButton {
+                id: l0TravelButton
+                visible: root.axisIndex === 0
+                Layout.preferredWidth: visible ? 22 : 0; Layout.preferredHeight: 22
+                onClicked: {
+                    speedPopup.close()
+                    smartLimitPopup.close()
+                    root.openPopupNear(l0TravelButton, l0TravelPopup)
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: root.l0PreferredTravelEnabled ? (root.darkTheme ? "#173444" : "#E6F7FC")
+                                                         : l0TravelButton.hovered ? root.valueSurface : "transparent"
+                    border.width: root.l0PreferredTravelEnabled ? 1 : 0
+                    border.color: root.accent
+                }
+                contentItem: Canvas {
+                    id: l0TravelIcon
+                    anchors.fill: parent
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = root.l0PreferredTravelEnabled ? root.accent : root.secondaryText
+                        ctx.fillStyle = ctx.strokeStyle
+                        ctx.lineWidth = 1.4
+                        ctx.lineCap = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(4, 11); ctx.lineTo(18, 11)
+                        ctx.moveTo(4, 11); ctx.lineTo(7, 8)
+                        ctx.moveTo(4, 11); ctx.lineTo(7, 14)
+                        ctx.moveTo(18, 11); ctx.lineTo(15, 8)
+                        ctx.moveTo(18, 11); ctx.lineTo(15, 14)
+                        ctx.stroke()
+                        ctx.beginPath(); ctx.arc(11, 11, 2, 0, Math.PI * 2); ctx.fill()
+                    }
+                    Connections { target: root; function onL0PreferredTravelEnabledChanged() { l0TravelIcon.requestPaint() } }
+                }
+                AppToolTip {
+                    visible: l0TravelButton.hovered
+                    text: qsTr("Preferred L0 travel")
+                    darkTheme: root.darkTheme
+                }
+            }
+            ToolButton {
                 id: smartLimitButton
                 Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
                     speedPopup.close()
+                    l0TravelPopup.close()
                     root.openPopupNear(smartLimitButton, smartLimitPopup)
                 }
                 background: Rectangle {
@@ -238,6 +295,7 @@ Rectangle {
                 Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
                     smartLimitPopup.close()
+                    l0TravelPopup.close()
                     root.openPopupNear(speedButton, speedPopup)
                 }
                 background: Rectangle {
@@ -375,6 +433,99 @@ Rectangle {
                     color: root.secondaryText
                     font.pixelSize: 9
                     font.family: "Cascadia Mono"
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: l0TravelPopup
+        parent: Overlay.overlay
+        width: 252
+        padding: 13
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 10
+            color: root.darkTheme ? "#151C27" : "#FFFFFF"
+            border.color: root.darkTheme ? "#303C4E" : "#CDD6E1"
+        }
+        contentItem: ColumnLayout {
+            spacing: 9
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("PREFERRED L0 TRAVEL"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                CompactToggle {
+                    checked: root.l0PreferredTravelEnabled
+                    onToggled: root.controller.set_l0_preferred_travel_enabled(checked)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                enabled: root.l0PreferredTravelEnabled
+                Label { text: qsTr("TARGET"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                StableStepper {
+                    Layout.preferredWidth: 112
+                    from: 1000; to: 9000; stepSize: 100
+                    value: root.l0PreferredTravel
+                    decimals: 0
+                    suffixText: ""
+                    numberWidth: 46
+                    suffixWidth: 0
+                    onValueModified: (nextValue) => root.controller.set_l0_preferred_travel(nextValue)
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 1
+                color: root.darkTheme ? "#293547" : "#E0E6ED"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("STATUS"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                Label {
+                    text: root.l0TravelStatusText()
+                    color: root.l0TravelState === "limited" ? "#F4B860"
+                         : root.l0TravelState === "locked" ? root.enabledGreen : root.mutedText
+                    font.pixelSize: 10; font.family: "Cascadia Mono"
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Learns a stable main stroke, then only enlarges short travel. Extra motion keeps the remaining headroom.")
+                wrapMode: Text.WordWrap
+                color: root.mutedText
+                font.pixelSize: 9
+                lineHeight: 1.15
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Automatic gain is applied before the L0 Gain control.")
+                    color: root.mutedText; font.pixelSize: 8
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                }
+                Button {
+                    id: relearnButton
+                    Layout.preferredWidth: 72; Layout.preferredHeight: 26
+                    text: qsTr("Relearn")
+                    enabled: root.l0PreferredTravelEnabled
+                    onClicked: root.controller.reset_l0_travel_learning()
+                    background: Rectangle {
+                        radius: 6
+                        color: relearnButton.pressed ? root.valueSurface
+                             : relearnButton.hovered ? (root.darkTheme ? "#223044" : "#E8EEF6") : "transparent"
+                        border.width: 1
+                        border.color: root.darkTheme ? "#3A475A" : "#C3CDD9"
+                    }
+                    contentItem: Label {
+                        text: relearnButton.text
+                        color: root.secondaryText; font.pixelSize: 9; font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
         }

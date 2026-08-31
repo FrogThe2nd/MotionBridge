@@ -260,7 +260,6 @@ void FallenDollInput::consume_line(const QByteArray& line) {
     const auto target_semantic = direct_geometry.value("targetSemantic").toString();
     if (!target_semantic.isEmpty()) {
         pending_frame_.l0_reference_length = true;
-        pending_frame_.l0_activity_window = direct_geometry.value("l0Normalization").toString() == u"activity_window";
         const auto l0_min = direct_geometry.value("l0MinMeters");
         const auto l0_max = direct_geometry.value("l0MaxMeters");
         if (l0_min.isDouble() && l0_max.isDouble() && l0_max.toDouble() > l0_min.toDouble()) {
@@ -347,7 +346,6 @@ void FallenDollInput::consume_motion_frame(const QJsonObject& packet) {
     frame.action_category = action.value("category").toString().toStdString();
     const auto direct_geometry = packet.value("directGeometry").toObject();
     frame.direct_l0_inverted = direct_geometry.value("l0Inverted").toBool();
-    frame.l0_activity_window = direct_geometry.value("l0Normalization").toString() == u"activity_window";
     for (const auto& raw_participant : packet.value("participants").toArray()) {
         const auto raw = raw_participant.toObject();
         Participant participant;

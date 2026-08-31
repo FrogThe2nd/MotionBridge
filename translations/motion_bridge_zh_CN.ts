@@ -4,6 +4,50 @@
 <context>
     <name>AxisCard</name>
     <message>
+        <source>Off</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>Learning · %1/6</source>
+        <translation>学习中 · %1/6</translation>
+    </message>
+    <message>
+        <source>4× limit · %1 travel</source>
+        <translation>已达 4× 上限 · 行程 %1</translation>
+    </message>
+    <message>
+        <source>Locked · %1×</source>
+        <translation>已锁定 · %1×</translation>
+    </message>
+    <message>
+        <source>Preferred L0 travel</source>
+        <translation>L0 偏好行程</translation>
+    </message>
+    <message>
+        <source>PREFERRED L0 TRAVEL</source>
+        <translation>L0 偏好行程</translation>
+    </message>
+    <message>
+        <source>TARGET</source>
+        <translation>目标</translation>
+    </message>
+    <message>
+        <source>STATUS</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <source>Learns a stable main stroke, then only enlarges short travel. Extra motion keeps the remaining headroom.</source>
+        <translation>识别稳定主行程后只放大短行程，额外动作继续使用剩余余量。</translation>
+    </message>
+    <message>
+        <source>Automatic gain is applied before the L0 Gain control.</source>
+        <translation>自动倍率会先于 L0 增益生效。</translation>
+    </message>
+    <message>
+        <source>Relearn</source>
+        <translation>重新学习</translation>
+    </message>
+    <message>
         <location filename="../qml/AxisCard.qml" line="255"/>
         <source>Smart limit</source>
         <translation>智能限制</translation>
