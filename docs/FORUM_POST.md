@@ -32,11 +32,34 @@ https://store.steampowered.com/app/1811180/
 ### Install and use
 
 1. Download the latest **Fallen Doll Mod release** for your game version, then close the game.
-2. Extract the Mod package. Run `Install-Mod.ps1` and select the game folder, or copy the package's `Game` contents into `Paralogue/Binaries/Win64` inside that game folder. The Mod must be enabled so it can write the `fd-skeleton.ndjson` motion stream.
+2. Extract the complete Mod package. Keep `Install-Mod.ps1` beside its `Game` folder, then run the installer and provide the top-level game folder—not an EXE file or the inner `Win64` folder. Alternatively, follow the edition-specific manual installation steps below.
 3. Download and extract the latest **Motion Bridge** portable ZIP, then start `MotionBridge.exe`.
 4. Start Fallen Doll and enter an HAnime. In Motion Bridge, wait until **STREAM** shows **ONLINE**.
 5. Open the 3D preview and verify that the motion looks correct before connecting hardware.
 6. Choose one output method: **USB**, **Wi-Fi**, **Intiface**, or **Handy**. Check the port/address, set safe per-axis ranges, then explicitly select **ARM OUTPUT**. Direct Handy output needs its Handyverse connection key; the key is only kept until Motion Bridge closes.
+
+#### Manual Mod installation
+
+1. Close Fallen Doll completely and extract the entire downloaded Mod ZIP.
+2. Choose the destination that matches the exact game edition:
+
+| Edition | Destination inside the game folder |
+|---|---|
+| Playtest | `Paralogue\Binaries\Win64` |
+| Demo Desktop | `Desktop\WindowsNoEditor\Paralogue\Binaries\Win64` |
+| Demo VR | `VR\WindowsNoEditor\Paralogue\Binaries\Win64` |
+
+3. Open the extracted package's `Game` folder. Copy the **contents inside it**—`dwmapi.dll` and the `ue4ss` folder—into the destination above. Do not copy the outer `Game` folder itself. Allow Windows to merge `ue4ss` and replace the packaged Mod files when prompted.
+4. Confirm that the selected destination contains these three paths:
+
+```text
+<destination>\dwmapi.dll
+<destination>\ue4ss\UE4SS.dll
+<destination>\ue4ss\Mods\fd_tcode_probe\Scripts\main.lua
+```
+
+5. Start Motion Bridge, then start Fallen Doll and enter an HAnime. The Mod intentionally adds no in-game menu, overlay, or debug console. A working installation is shown by Motion Bridge changing from **STREAM WAITING** to **STREAM ONLINE** after fresh motion frames arrive.
+6. If the stream remains waiting, open `<destination>\ue4ss\UE4SS.log` and check whether `%USERPROFILE%\.f8\studio\games\fallen-doll\runtime\fd-skeleton.ndjson` exists and continues updating during the HAnime.
 
 Do not arm output until the preview is correct. Stop/disarm the app before changing hardware or testing a new pose.
 
@@ -51,8 +74,8 @@ MotionBridge and the Mod do not make a network connection to each other. The Mod
 **STREAM WAITING** means that MotionBridge has not received a new valid bone frame recently. Check these points in order:
 
 1. Use the Mod release matching the exact game edition. Do not assume the repository's Latest release matches Demo, Playtest, or another installation.
-2. Confirm the Mod is installed beside the game executable. A working install contains `Paralogue\Binaries\Win64\dwmapi.dll`, `ue4ss\UE4SS.dll`, and `ue4ss\Mods\fd_tcode_probe\Scripts\main.lua`.
-3. Open `Paralogue\Binaries\Win64\ue4ss\UE4SS.log` after starting the game. This distinguishes UE4SS not injecting from the Lua Mod not loading.
+2. Confirm the Mod is installed beside the game executable using the edition-specific destination table above. A working destination contains `dwmapi.dll`, `ue4ss\UE4SS.dll`, and `ue4ss\Mods\fd_tcode_probe\Scripts\main.lua`.
+3. Open `<destination>\ue4ss\UE4SS.log` after starting the game. This distinguishes UE4SS not injecting from the Lua Mod not loading.
 4. Enter a recognised HAnime, then check whether `fd-skeleton.ndjson` exists and its modified time continues to change while the action is running.
 5. Check for old `F8STUDIO_GAMES_DIR` or `FD_TCODE_RUNTIME_DIR` environment variables. Either one can deliberately redirect the Mod to a different runtime folder.
 
@@ -112,11 +135,34 @@ https://store.steampowered.com/app/1811180/
 ### 安装与使用
 
 1. 根据游戏版本下载最新的 **Fallen Doll Mod 发布包**，然后关闭游戏。
-2. 解压 Mod 包。运行 `Install-Mod.ps1` 并选择游戏目录，或将包内 `Game` 文件夹中的内容复制到游戏目录下的 `Paralogue/Binaries/Win64`。确认 Mod 已启用，能够写入 `fd-skeleton.ndjson` 动作数据。
+2. 完整解压 Mod 包，保持 `Install-Mod.ps1` 与 `Game` 文件夹位于同一级；运行安装器，并提供游戏最外层目录，不要填写 EXE 文件或内部的 `Win64` 文件夹。也可以按照下方区分版本的步骤手动安装。
 3. 下载并解压最新版 **Motion Bridge** 便携包，然后启动 `MotionBridge.exe`。
 4. 启动 Fallen Doll 并进入 HAnime。在 Motion Bridge 中等待 **STREAM** 显示为 **ONLINE**。
 5. 打开 3D 预览，先确认动作正确，再连接设备。
 6. 选择一种输出方式：**USB**、**Wi-Fi**、**Intiface** 或 **Handy**。确认端口/地址，为设备设置安全的各轴范围后，再手动点击 **ARM OUTPUT**。Handy 直连需要填写 Handyverse 连接密钥；密钥只会保留到 Motion Bridge 关闭。
+
+#### 手动安装 Mod
+
+1. 完全关闭 Fallen Doll，并完整解压下载的 Mod ZIP。
+2. 根据实际游戏版本选择目标目录：
+
+| 游戏版本 | 游戏目录内的目标路径 |
+|---|---|
+| Playtest | `Paralogue\Binaries\Win64` |
+| Demo Desktop | `Desktop\WindowsNoEditor\Paralogue\Binaries\Win64` |
+| Demo VR | `VR\WindowsNoEditor\Paralogue\Binaries\Win64` |
+
+3. 打开解压包内的 `Game` 文件夹，将其中的**内容**——`dwmapi.dll` 和 `ue4ss` 文件夹——复制到上方对应的目标目录。不要把外层 `Game` 文件夹本身复制进去。Windows 提示时，允许合并 `ue4ss` 并替换安装包提供的 Mod 文件。
+4. 确认所选目标目录最终包含以下三个路径：
+
+```text
+<目标目录>\dwmapi.dll
+<目标目录>\ue4ss\UE4SS.dll
+<目标目录>\ue4ss\Mods\fd_tcode_probe\Scripts\main.lua
+```
+
+5. 先启动 Motion Bridge，再启动 Fallen Doll 并进入 HAnime。此 Mod 不会显示游戏内菜单、浮层或调试控制台；收到新动作帧后，Motion Bridge 从 **STREAM WAITING** 变为 **STREAM ONLINE**，才是可见的运行结果。
+6. 如果数据流一直处于等待状态，请打开 `<目标目录>\ue4ss\UE4SS.log`，并检查进入 HAnime 后 `%USERPROFILE%\.f8\studio\games\fallen-doll\runtime\fd-skeleton.ndjson` 是否存在且持续更新。
 
 预览未确认正确前，请不要解锁输出。更换硬件或测试新姿势前，请先停止/解除输出。
 
@@ -131,8 +177,8 @@ MotionBridge 和 Mod 之间不是网络连接。Mod 会写入本地动作文件�
 **STREAM WAITING** 表示 MotionBridge 最近没有收到新的有效骨骼帧。请按以下顺序检查：
 
 1. 下载与实际游戏版本完全匹配的 Mod 发布包。不要因为它是仓库的 Latest Release 就假定适用于 Demo、Playtest 或另一套安装。
-2. 确认 Mod 安装在游戏 EXE 所在目录。正常安装应包含 `Paralogue\Binaries\Win64\dwmapi.dll`、`ue4ss\UE4SS.dll` 和 `ue4ss\Mods\fd_tcode_probe\Scripts\main.lua`。
-3. 启动游戏后打开 `Paralogue\Binaries\Win64\ue4ss\UE4SS.log`。它可区分 UE4SS 未注入与 Lua Mod 未加载两种情况。
+2. 按照上方区分版本的目标目录表，确认 Mod 安装在游戏 EXE 所在目录。正常的目标目录应包含 `dwmapi.dll`、`ue4ss\UE4SS.dll` 和 `ue4ss\Mods\fd_tcode_probe\Scripts\main.lua`。
+3. 启动游戏后打开 `<目标目录>\ue4ss\UE4SS.log`。它可区分 UE4SS 未注入与 Lua Mod 未加载两种情况。
 4. 进入已识别的 HAnime，再检查 `fd-skeleton.ndjson` 是否存在，以及动作运行期间修改时间是否持续变化。
 5. 检查旧的 `F8STUDIO_GAMES_DIR` 或 `FD_TCODE_RUNTIME_DIR` 环境变量；它们会让 Mod 有意写入另一个运行目录。
 
