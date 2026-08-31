@@ -2,6 +2,7 @@
 
 #include "motion_bridge/types.hpp"
 
+#include <QJsonObject>
 #include <QObject>
 #include <QSerialPort>
 #include <QUdpSocket>
@@ -40,6 +41,7 @@ private:
     void send_output(const motion_bridge::Axes& axes, std::chrono::milliseconds interval, bool force_full = false);
     void send_intiface_zero();
     void reset_output_tracking();
+    void select_intiface_device(const QJsonObject& device);
 
     Mode mode_{Mode::None};
     bool armed_{};
@@ -52,6 +54,9 @@ private:
     QWebSocket* intiface_{};
     int intiface_request_id_{1};
     int intiface_device_index_{-1};
+    int intiface_feature_index_{-1};
+    int intiface_position_min_{};
+    int intiface_position_max_{100};
     motion_bridge::Axes last_sent_axes_;
     std::array<bool, 6> last_sent_valid_{};
 };

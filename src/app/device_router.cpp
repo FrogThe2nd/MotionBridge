@@ -24,7 +24,8 @@ DeviceRouter::DeviceRouter(QObject* parent) : QObject(parent) {
     connect(intiface_, &QWebSocket::errorOccurred, this, &DeviceRouter::on_intiface_error);
     connect(intiface_, &QWebSocket::connected, this, [this] {
         const auto request = QJsonObject{{"RequestServerInfo", QJsonObject{
-            {"Id", intiface_request_id_++}, {"ClientName", "Motion Bridge"}, {"MessageVersion", 3}
+            {"Id", intiface_request_id_++}, {"ClientName", "Motion Bridge"},
+            {"ProtocolVersionMajor", 4}, {"ProtocolVersionMinor", 0}
         }}};
         intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{request}).toJson(QJsonDocument::Compact)));
     });
@@ -107,13 +108,17 @@ void DeviceRouter::send_output(
         udp_->write(QByteArray::fromStdString(encode_tcode(axes, interval)));
         return;
     }
-    if (mode_ == Mode::Intiface && intiface_->state() == QAbstractSocket::ConnectedState && intiface_device_index_ >= 0) {
+    if (mode_ == Mode::Intiface && intiface_->state() == QAbstractSocket::ConnectedState &&
+        intiface_device_index_ >= 0 && intiface_feature_index_ >= 0) {
         if (!force_full && last_sent_valid_[0] && std::abs(last_sent_axes_[0] - axes[0]) < 0.005) return;
-        // Intiface only receives explicitly supported scalar features. Initial mapping uses
-        // the first Linear actuator for L0; richer per-feature mapping belongs in Settings.
-        const auto message = QJsonObject{{"ScalarCmd", QJsonObject{
+        // A Handy exposes its stroke as a Position output. L0 drives the first
+        // advertised Position feature, scaled to the range Intiface reports.
+        const auto position = static_cast<int>(std::lround(intiface_position_min_ +
+            std::clamp(axes[0], 0.0, 1.0) * (intiface_position_max_ - intiface_position_min_)));
+        const auto message = QJsonObject{{"OutputCmd", QJsonObject{
             {"Id", intiface_request_id_++}, {"DeviceIndex", intiface_device_index_},
-            {"Scalars", QJsonArray{QJsonObject{{"Index", 0}, {"Scalar", axes[0]}, {"ActuatorType", "Linear"}}}}
+            {"FeatureIndex", intiface_feature_index_},
+            {"Command", QJsonObject{{"Position", QJsonObject{{"Value", position}}}}}
         }}};
         intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{message}).toJson(QJsonDocument::Compact)));
         last_sent_axes_[0] = axes[0];
@@ -133,7 +138,9 @@ void DeviceRouter::emergency_stop() {
 
 void DeviceRouter::send_intiface_zero() {
     if (intiface_->state() != QAbstractSocket::ConnectedState || intiface_device_index_ < 0) return;
-    const auto message = QJsonObject{{"StopDeviceCmd", QJsonObject{{"Id", intiface_request_id_++}, {"DeviceIndex", intiface_device_index_}}}};
+    const auto message = QJsonObject{{"StopCmd", QJsonObject{
+        {"Id", intiface_request_id_++}, {"DeviceIndex", intiface_device_index_}, {"Inputs", false}, {"Outputs", true}
+    }}};
     intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{message}).toJson(QJsonDocument::Compact)));
 }
 
@@ -143,24 +150,46 @@ void DeviceRouter::on_intiface_message(const QString& message) {
     for (const auto& value : messages) {
         const auto object = value.toObject();
         if (object.contains("ServerInfo")) {
-            const auto request = QJsonObject{{"StartScanning", QJsonObject{{"Id", intiface_request_id_++}}}};
-            intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{request}).toJson(QJsonDocument::Compact)));
+            const auto start_scanning = QJsonObject{{"StartScanning", QJsonObject{{"Id", intiface_request_id_++}}}};
+            const auto request_device_list = QJsonObject{{"RequestDeviceList", QJsonObject{{"Id", intiface_request_id_++}}}};
+            intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{start_scanning, request_device_list}).toJson(QJsonDocument::Compact)));
         }
-        if (object.contains("DeviceAdded")) {
-            const auto device = object.value("DeviceAdded").toObject();
-            const auto features = device.value("DeviceMessages").toObject().value("ScalarCmd").toArray();
-            const auto has_linear = std::any_of(features.begin(), features.end(), [](const QJsonValue& feature) {
-                return feature.toObject().value("ActuatorType").toString().compare("Linear", Qt::CaseInsensitive) == 0;
-            });
-            intiface_device_index_ = has_linear ? device.value("DeviceIndex").toInt(-1) : -1;
-            if (intiface_device_index_ >= 0) {
-                reset_output_tracking();
-                emit status_changed(tr("Intiface armed: %1 (L0 → first Linear feature)").arg(device.value("DeviceName").toString()), true);
-            } else {
-                emit status_changed(tr("Intiface device has no Linear feature; TCode output remains disarmed"), false);
+        if (object.contains("DeviceList")) {
+            intiface_device_index_ = -1;
+            intiface_feature_index_ = -1;
+            const auto devices = object.value("DeviceList").toObject().value("Devices").toObject();
+            for (auto it = devices.begin(); it != devices.end(); ++it) {
+                select_intiface_device(it.value().toObject());
+                if (intiface_device_index_ >= 0) break;
             }
         }
+        if (object.contains("DeviceAdded")) select_intiface_device(object.value("DeviceAdded").toObject());
     }
+}
+
+void DeviceRouter::select_intiface_device(const QJsonObject& device) {
+    const auto features = device.value("DeviceFeatures").toObject();
+    for (auto it = features.begin(); it != features.end(); ++it) {
+        const auto feature = it.value().toObject();
+        const auto position = feature.value("Output").toObject().value("Position").toObject();
+        const auto range = position.value("Value").toArray();
+        if (position.isEmpty() || range.size() != 2) continue;
+
+        const auto minimum = range.at(0).toInt();
+        const auto maximum = range.at(1).toInt();
+        const auto device_index = device.value("DeviceIndex").toInt(-1);
+        const auto feature_index = feature.value("FeatureIndex").toInt(it.key().toInt());
+        if (maximum < minimum || device_index < 0 || feature_index < 0) continue;
+
+        intiface_device_index_ = device_index;
+        intiface_feature_index_ = feature_index;
+        intiface_position_min_ = minimum;
+        intiface_position_max_ = maximum;
+        reset_output_tracking();
+        emit status_changed(tr("Intiface armed: %1 (L0 → first Position feature)").arg(device.value("DeviceName").toString()), true);
+        return;
+    }
+    emit status_changed(tr("Intiface device has no Position feature; output remains disarmed"), false);
 }
 
 void DeviceRouter::reset_output_tracking() { last_sent_valid_.fill(false); }
