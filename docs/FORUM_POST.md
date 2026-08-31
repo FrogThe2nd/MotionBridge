@@ -80,7 +80,7 @@ For ongoing support and release discussion, [join the MotionBridge Discord](http
 - This is an unofficial community project; it is not affiliated with the game developers or hardware vendors.
 - The packages do not include game assets, device drivers, or Intiface Desktop.
 - Intiface support currently uses the first declared **Position** feature and maps it from `L0`; it is not a generic SR6 mapping.
-- Direct Handy output uses HAMP rather than a per-frame cloud position stream. After it observes at least 5% of live `L0` travel, it updates the Handy slide range and velocity at a limited rate.
+- Direct Handy output uses HDSP position control. It coalesces `L0` into the newest target position and sends it at a limited rate, so Handy follows the L0 direction and position without accumulating a cloud request backlog.
 - New or unusual scenes should always be checked in the preview first. Set conservative output ranges for your hardware.
 
 ---
@@ -160,5 +160,5 @@ MotionBridge 和 Mod 之间不是网络连接。Mod 会写入本地动作文件�
 - 这是非官方社区项目，与游戏开发商和设备厂商没有关联。
 - 发布包不包含游戏资源、设备驱动或 Intiface Desktop。
 - Intiface 当前只使用设备声明的第一个 **Position** 功能，并由 `L0` 驱动；它不是通用的 SR6 映射。
-- Handy 直连使用 HAMP，而不是逐帧云端位置流。检测到至少 5% 的实时 `L0` 行程后，程序会以受限频率更新 Handy 的行程范围和速度。
+- Handy 直连使用 HDSP 位置控制。程序会把 `L0` 合并为最新目标位置并以受限频率发送，使 Handy 跟随 L0 的方向与位置，同时避免云端请求积压。
 - 遇到新动作或特殊姿势，请先在预览中确认，并为自己的设备使用保守的输出范围。

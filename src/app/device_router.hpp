@@ -3,9 +3,6 @@
 #include "motion_bridge/types.hpp"
 
 #include <QJsonObject>
-#include <QElapsedTimer>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QObject>
 #include <QSerialPort>
 #include <QUdpSocket>
@@ -13,6 +10,8 @@
 
 #include <array>
 #include <chrono>
+
+class HandyPositionOutput;
 
 class DeviceRouter final : public QObject {
     Q_OBJECT
@@ -41,20 +40,9 @@ private slots:
     void on_intiface_error(QAbstractSocket::SocketError error);
 
 private:
-    enum class HandyState { Idle, CheckingConnection, Preparing, Ready, Failed };
-    enum class HandyRequest { None, CheckConnection, SetHampMode, SetSlide, StartHamp, SetVelocity, StopHamp };
-
     void ensure_transport();
     void send_output(const motion_bridge::Axes& axes, std::chrono::milliseconds interval, bool force_full = false);
     void send_intiface_zero();
-    void send_handy_output(const motion_bridge::Axes& axes, std::chrono::milliseconds interval);
-    void request_handy_connection_check();
-    void send_handy_request(HandyRequest operation, const QString& path, const QJsonObject& body = {});
-    void on_handy_reply(HandyRequest operation, int http_status, QNetworkReply::NetworkError error,
-                        const QString& error_text, const QByteArray& response);
-    void request_handy_motion();
-    void request_handy_stop();
-    void reset_handy_motion_tracking();
     void reset_output_tracking();
     void select_intiface_device(const QJsonObject& device);
 
@@ -67,31 +55,12 @@ private:
     QSerialPort* serial_{};
     QUdpSocket* udp_{};
     QWebSocket* intiface_{};
-    QNetworkAccessManager* handy_api_{};
+    HandyPositionOutput* handy_{};
     int intiface_request_id_{1};
     int intiface_device_index_{-1};
     int intiface_feature_index_{-1};
     int intiface_position_min_{};
     int intiface_position_max_{100};
-    QString handy_connection_key_;
-    QString handy_active_connection_key_;
-    QNetworkReply* handy_reply_{};
-    HandyState handy_state_{HandyState::Idle};
-    bool handy_started_{};
-    bool handy_stop_requested_{};
-    bool handy_waiting_for_motion_{};
-    bool handy_has_position_{};
-    double handy_previous_position_{};
-    double handy_observed_min_{1.0};
-    double handy_observed_max_{};
-    int handy_desired_min_{};
-    int handy_desired_max_{100};
-    int handy_desired_velocity_{5};
-    int handy_active_min_{-1};
-    int handy_active_max_{-1};
-    int handy_active_velocity_{-1};
-    qint64 handy_last_motion_request_ms_{-1000};
-    QElapsedTimer handy_clock_;
     motion_bridge::Axes last_sent_axes_;
     std::array<bool, 6> last_sent_valid_{};
 };

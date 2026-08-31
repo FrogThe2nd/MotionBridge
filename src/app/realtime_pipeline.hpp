@@ -32,8 +32,10 @@ public slots:
     void set_axis_gain(int axis, double value);
     void set_axis_range(int axis, double minimum, double maximum);
     void set_axis_preferred_travel_enabled(int axis, bool enabled);
-    void set_axis_preferred_travel(int axis, int value);
+    void set_axis_preferred_travel_range(int axis, int minimum, int maximum);
     void reset_axis_travel_learning(int axis);
+    void set_safety_distance_enabled(bool enabled);
+    void set_safety_distance_cm(double centimeters);
     void set_output_rate_hz(int value);
     void set_soft_start_enabled(bool enabled);
     void set_soft_start_duration_ms(int value);
@@ -63,6 +65,7 @@ signals:
     void axis_gains_changed(const QVariantList& gains);
     void axis_ranges_changed(const QVariantList& minimums, const QVariantList& maximums);
     void axis_travel_preferences_changed(const QVariantList& preferences);
+    void contact_settings_changed(bool safety_distance_enabled, double safety_distance_cm);
     void output_processing_settings_changed(int rate_hz, bool soft_start_enabled, int soft_start_duration_ms,
                                             const QVariantList& axis_output_settings);
     void theme_changed(const QString& theme);
@@ -81,6 +84,7 @@ private:
     void publish_axis_gains();
     void publish_axis_ranges();
     void publish_axis_travel_preferences();
+    void publish_contact_settings();
     void publish_output_processing_settings();
     void publish_participant_choices(const motion_bridge::MotionFrame& frame);
     void publish_reference_participant();

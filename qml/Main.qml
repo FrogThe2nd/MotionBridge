@@ -66,12 +66,19 @@ ApplicationWindow {
                            : connectionExpanded ? 540
                            : tuningExpanded ? 700
                            : 190
-        minimumWidth = tuningExpanded ? 980
-                     : connectionExpanded ? 860
-                     : 800
-        minimumHeight = expanded ? targetHeight : 186
-        width = targetWidth
-        height = targetHeight
+        const targetMinimumWidth = tuningExpanded ? 980
+                                 : connectionExpanded ? 860
+                                 : 800
+        const area = screen ? screen.availableGeometry : null
+        const fittedWidth = area && area.width > 0 ? Math.min(targetWidth, Math.max(800, area.width - 12)) : targetWidth
+        const fittedHeight = area && area.height > 0 ? Math.min(targetHeight, Math.max(186, area.height - 12)) : targetHeight
+        // The expanded workspace is scrollable, so let the outer window fit
+        // the usable desktop at high DPI instead of extending under the
+        // taskbar. This is especially relevant at Windows 150% scaling.
+        minimumWidth = Math.min(targetMinimumWidth, fittedWidth)
+        minimumHeight = expanded ? fittedHeight : 186
+        width = fittedWidth
+        height = fittedHeight
         // Keep the custom title bar fixed and grow the workspaces to the right
         // and downward. Re-centering here can push the only drag surface above
         // the desktop when the compact window is close to the top edge.
@@ -184,6 +191,7 @@ ApplicationWindow {
         required property string glyph
         property string tipText: ""
         property color hoverColor: window.hoverSurface
+        property color glyphColor: window.textSecondary
         property real glyphSize: 13
         width: 42; height: 36
         text: glyph
@@ -195,7 +203,7 @@ ApplicationWindow {
         }
         contentItem: Label {
             text: control.text
-            color: control.hovered && control.hoverColor === "#B84350" ? "white" : window.textSecondary
+            color: control.hovered && control.hoverColor === "#B84350" ? "white" : control.glyphColor
             font.pixelSize: control.glyphSize
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter
@@ -369,6 +377,61 @@ ApplicationWindow {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                 }
+            }
+        }
+    }
+
+    component ScaleOption: MenuItem {
+        id: scaleOption
+        required property int scalePercent
+        required property string optionText
+        implicitWidth: 154
+        implicitHeight: 34
+        text: optionText
+        checkable: true
+        checked: companion.displayScalePercent === scalePercent
+        hoverEnabled: true
+        leftPadding: 9
+        rightPadding: 9
+        onTriggered: companion.set_display_scale_percent(scalePercent)
+
+        indicator: Item { implicitWidth: 0; implicitHeight: 0 }
+        arrow: Item { implicitWidth: 0; implicitHeight: 0 }
+
+        background: Rectangle {
+            radius: 8
+            color: scaleOption.highlighted || scaleOption.hovered
+                   ? window.hoverSurface : "transparent"
+            border.width: scaleOption.checked ? 1 : 0
+            border.color: scaleOption.checked
+                          ? (window.darkTheme ? "#5268C7" : "#AEBBEE")
+                          : "transparent"
+        }
+
+        contentItem: RowLayout {
+            spacing: 9
+            Rectangle {
+                Layout.preferredWidth: 16
+                Layout.preferredHeight: 16
+                radius: 5
+                color: scaleOption.checked ? window.primary : "transparent"
+                border.width: scaleOption.checked ? 0 : 1
+                border.color: window.outline
+                Label {
+                    anchors.centerIn: parent
+                    text: "✓"
+                    visible: scaleOption.checked
+                    color: "white"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: scaleOption.optionText
+                color: scaleOption.checked ? window.textPrimary : window.textSecondary
+                font.pixelSize: 10
+                verticalAlignment: Text.AlignVCenter
             }
         }
     }
@@ -605,6 +668,48 @@ ApplicationWindow {
                     Label { text: qsTr("GAME MOTION · MULTI-AXIS"); color: window.textMuted; font.pixelSize: 8; font.letterSpacing: 1.1 }
                     Item { Layout.fillWidth: true }
                     WindowButton {
+                        id: scaleButton
+                        Layout.preferredWidth: 48
+                        glyph: companion.displayScalePercent === 0 ? "DPI" : companion.displayScalePercent + "%"
+                        glyphSize: 9
+                        glyphColor: companion.displayScaleRestartRequired ? "#F1B865" : window.textSecondary
+                        tipText: companion.displayScaleRestartRequired
+                                 ? qsTr("Display scale · restart required")
+                                 : qsTr("Display scale")
+                        onClicked: scaleMenu.popup(scaleButton,
+                                                   scaleButton.width - scaleMenu.width,
+                                                   scaleButton.height + 4)
+                        Menu {
+                            id: scaleMenu
+                            width: 168
+                            padding: 7
+                            margins: 6
+                            background: Rectangle {
+                                radius: 12
+                                color: window.panel
+                                border.color: window.outline
+                            }
+                            ScaleOption { scalePercent: 0; optionText: qsTr("Follow system") }
+                            ScaleOption { scalePercent: 75; optionText: "75%" }
+                            ScaleOption { scalePercent: 90; optionText: "90%" }
+                            ScaleOption { scalePercent: 100; optionText: "100%" }
+                            ScaleOption { scalePercent: 110; optionText: "110%" }
+                            ScaleOption { scalePercent: 125; optionText: "125%" }
+                            MenuItem {
+                                enabled: false
+                                implicitHeight: 28
+                                background: Item {}
+                                contentItem: Label {
+                                    text: qsTr("Applies after restart")
+                                    color: window.textMuted
+                                    font.pixelSize: 8
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                    }
+                    WindowButton {
                         id: languageButton
                         glyph: languageController.effectiveLanguage === "zh_CN" ? "中" : "EN"
                         tipText: qsTr("Language")
@@ -646,9 +751,9 @@ ApplicationWindow {
                 }
                 MouseArea {
                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
-                    // Keep the drag layer away from all four window controls;
+                    // Keep the drag layer away from all title-bar controls;
                     // overlap here made the left-most hover target intermittent.
-                    anchors.rightMargin: 216
+                    anchors.rightMargin: 266
                     acceptedButtons: Qt.LeftButton
                     onPressed: window.startSystemMove()
                     onDoubleClicked: window.visibility === Window.Maximized ? window.showNormal() : window.showMaximized()
@@ -876,6 +981,32 @@ ApplicationWindow {
                                     choices: companion.referenceParticipants
                                     selectedKey: companion.referenceParticipant
                                     onParticipantChosen: (key) => companion.set_reference_participant(key)
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.minimumWidth: 220
+                                Layout.preferredWidth: 260
+                                Layout.maximumWidth: 280
+                                spacing: 3
+                                RowLayout {
+                                    Layout.preferredHeight: 16
+                                    Label { text: qsTr("SAFETY DISTANCE"); color: window.textSecondary; font.pixelSize: 9; font.bold: true }
+                                    MiniToggle { checked: companion.safetyDistanceEnabled; onToggled: companion.set_safety_distance_enabled(checked) }
+                                    Item { Layout.fillWidth: true }
+                                    Label { text: companion.safetyDistanceCm.toFixed(0) + " cm"; color: window.textMuted; font.pixelSize: 9; font.family: "Cascadia Mono" }
+                                }
+                                ThinSlider {
+                                    id: safetyDistanceSlider
+                                    Layout.fillWidth: true
+                                    enabled: companion.safetyDistanceEnabled
+                                    from: 2; to: 50; stepSize: 1
+                                    value: companion.safetyDistanceCm
+                                    onPressedChanged: if (!pressed) companion.set_safety_distance_cm(value)
+                                    AppToolTip {
+                                        visible: safetyDistanceSlider.hovered
+                                        text: qsTr("Signals start only after Reference and Target are within this distance")
+                                        darkTheme: window.darkTheme
+                                    }
                                 }
                             }
                             Item { Layout.fillWidth: true }

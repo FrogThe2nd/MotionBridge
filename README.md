@@ -10,10 +10,11 @@ Motion Bridge has one real-time worker thread for file watching, motion calculat
 
 - Real-time L0/L1/L2/R0/R1/R2 processing for OSR2/SR6 workflows.
 - USB serial, Wi-Fi UDP (`tcode.local:8000` by default), Intiface Desktop, and direct Handy output.
-- A transport-independent fixed-rate output clock with measured TCode intervals, soft start, cross-axis smart limits, per-axis speed limits, output switches, and configurable safe positions. Axis cards and the 3D preview always follow the final protected signal, whether hardware output is armed or not.
+- A transport-independent fixed-rate output clock with measured TCode intervals, soft start, cross-axis smart limits, per-axis speed limits, output switches, configurable safe positions, and an optional global safety-distance gate. Far-away initialization poses cannot enter six-axis processing or preferred-range learning until Reference and Target are close enough. Axis cards and the 3D preview always follow the final protected signal, whether hardware output is armed or not.
 - Separate SR6/OSR 3D viewer with optional always-on-top mode.
-- Per-axis gain (output travel around the selected center) and output-range controls, plus an independent preferred-travel optimizer for every axis. It learns stable repeated motion, enlarges only short travel, and leaves extra-motion headroom; translational axes are capped at 4× automatic gain and rotational axes at a conservative 2×. Settings are saved beside the executable in portable mode.
+- Per-axis gain (output travel around the selected center) and output-range controls, plus an independent preferred-range optimizer for every axis. It maps learned stable endpoints into a configurable minimum–maximum interval, enlarges only short travel, and leaves extra-motion headroom; translational axes are capped at 4× automatic gain and rotational axes at a conservative 2×. Settings are saved beside the executable in portable mode.
 - Light and dark themes, plus English, Simplified Chinese, and system-language selection.
+- A per-app display-scale selector (system, 75%, 90%, 100%, 110%, or 125%) applies on the next launch, so high-DPI desktops can keep MotionBridge compact.
 - Safe startup, stream-loss hold and smooth return to center. Device output always starts disarmed.
 
 ## Quick start with Fallen Doll
@@ -71,7 +72,7 @@ It uses `windeployqt` to copy the Qt runtime beside the executable. The output s
 - USB sends TCode at 115200 baud.
 - Wi-Fi uses the same UDP TCode transport as the existing F8Studio project (`tcode.local:8000` by default).
 - Intiface connects to the user's Intiface Desktop WebSocket at `ws://127.0.0.1:12345`. It enables the first declared Position feature and maps L0 to it; it does not pretend that a generic Intiface device is an SR6.
-- Handy can also connect directly through its cloud API. Motion Bridge switches it to HAMP, observes at least 5% of live L0 travel, then updates its slide range and velocity at a limited rate. This avoids treating its cloud API as a per-frame position stream.
+- Handy can also connect directly through its cloud API. It uses the HDSP position API: Motion Bridge coalesces live L0 into the latest target position and sends it at a limited rate. This preserves L0 direction and position while avoiding a backlog of cloud requests.
 - A start or imported configuration is always disarmed. Stream loss holds the final value for 250 ms, then returns to center over 600 ms.
 - Advanced output processing defaults to 50 Hz with a 600 ms soft start. Each axis card opens compact smart-limit and protection popups. A selected driver axis controls how much range or response speed the target axis retains through two freely movable curve points. Each axis can also be hard speed-limited or disabled independently, and a disabled axis stays at its configurable safe position.
 

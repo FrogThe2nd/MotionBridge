@@ -219,6 +219,10 @@ struct TargetBasis {
 double clamp01(const double value) noexcept { return std::clamp(value, 0.0, 1.0); }
 
 MotionEngine::MotionEngine(ContactConfig contact, SafetyConfig safety) : contact_(std::move(contact)), safety_(safety) {
+    for (std::size_t axis = 1; axis < travel_configs_.size(); ++axis) {
+        travel_configs_[axis].preferred_minimum = 0.2;
+        travel_configs_[axis].preferred_maximum = 0.8;
+    }
     for (std::size_t axis = 3; axis < travel_configs_.size(); ++axis) {
         travel_configs_[axis].maximum_gain = 2.0;
     }
@@ -240,7 +244,12 @@ void MotionEngine::set_contact_config(ContactConfig contact) {
 void MotionEngine::set_axis_tuning(std::array<AxisTuning, 6> tuning) { tuning_ = std::move(tuning); }
 void MotionEngine::set_axis_travel_preference(const std::size_t axis, PreferredTravelConfig config) {
     if (axis >= travel_configs_.size()) return;
-    config.preferred_travel = std::clamp(config.preferred_travel, 0.1, 0.9);
+    config.preferred_minimum = std::clamp(config.preferred_minimum, 0.0, 0.9);
+    config.preferred_maximum = std::clamp(config.preferred_maximum, 0.1, 1.0);
+    if (config.preferred_maximum - config.preferred_minimum < 0.1) {
+        config.preferred_maximum = std::min(1.0, config.preferred_minimum + 0.1);
+        config.preferred_minimum = std::max(0.0, config.preferred_maximum - 0.1);
+    }
     const auto maximum_allowed_gain = axis < 3 ? 4.0 : 2.0;
     config.maximum_gain = std::clamp(config.maximum_gain, 1.0, maximum_allowed_gain);
     travel_configs_[axis] = config;
@@ -370,11 +379,14 @@ double MotionEngine::optimize_axis(const std::size_t axis, const double value, c
     }
 
     const auto source_travel = std::max(runtime.profile->travel, kEpsilon);
-    const auto desired_gain = config.preferred_travel / source_travel;
+    const auto preferred_travel = config.preferred_maximum - config.preferred_minimum;
+    const auto desired_gain = preferred_travel / source_travel;
     const auto gain = std::clamp(desired_gain, 1.0, config.maximum_gain);
-    const auto expanded_travel = std::min(1.0, source_travel * gain);
-    const auto half_travel = expanded_travel * 0.5;
-    const auto target_center = std::clamp(runtime.profile->center, half_travel, 1.0 - half_travel);
+    const auto enlarging = gain > 1.0 + kEpsilon;
+    const auto expanded_travel = source_travel * gain;
+    const auto target_center = enlarging
+        ? config.preferred_minimum + expanded_travel * 0.5
+        : runtime.profile->center;
     runtime.optimized_center = target_center;
     const auto optimized = clamp01(target_center + (value - runtime.profile->center) * gain);
     runtime.status.observed_travel = source_travel;
@@ -403,6 +415,13 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     const auto axis = normalize(subtract(direction->position, origin->position));
     const auto length = magnitude(subtract(tip->position, origin->position));
     if (!axis || length <= kEpsilon) return std::nullopt;
+    const auto delta = subtract(target->position, origin->position);
+    auto axial = dot(delta, *axis);
+    const auto closest = add(origin->position, scale(*axis, std::clamp(axial, 0.0, length)));
+    const auto radial = subtract(target->position, closest);
+    if (contact_.safety_distance_enabled &&
+        magnitude(radial) > std::clamp(contact_.safety_distance_meters, 0.02, 0.50)) return std::nullopt;
+
     const auto body_plane = reference_plane(frame, reference);
     auto reference_right = body_plane
         ? normalize(project_on_plane(body_plane->tangent, *axis))
@@ -420,10 +439,6 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
         : bone(target_owner, contact_.target_secondary_bone);
     const auto bilateral = secondary_target != nullptr;
     const auto contact_basis = bilateral ? std::optional<TargetBasis>{} : target_contact_basis(frame, target_owner);
-    const auto delta = subtract(target->position, origin->position);
-    auto axial = dot(delta, *axis);
-    const auto closest = add(origin->position, scale(*axis, std::clamp(axial, 0.0, length)));
-    const auto radial = subtract(target->position, closest);
     auto translation_delta = body_plane ? project_on_plane(delta, body_plane->normal) : radial;
     auto radial_distance = magnitude(radial);
     const auto plane_intersection_requested = !bilateral

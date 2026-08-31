@@ -127,17 +127,26 @@ void RealtimePipeline::set_axis_preferred_travel_enabled(const int axis, const b
     publish_axis_travel_preferences();
 }
 
-void RealtimePipeline::set_axis_preferred_travel(const int axis, const int value) {
+void RealtimePipeline::set_axis_preferred_travel_range(const int axis, const int minimum, const int maximum) {
     if (axis < 0 || axis >= 6) return;
-    const auto normalized_value = std::clamp(value, 1000, 9000);
+    auto normalized_minimum = std::clamp(minimum, 0, 8999);
+    auto normalized_maximum = std::clamp(maximum, 1000, 9999);
+    if (normalized_maximum - normalized_minimum < 1000) {
+        normalized_maximum = std::min(9999, normalized_minimum + 1000);
+        normalized_minimum = std::max(0, normalized_maximum - 1000);
+    }
     auto config = engine_.axis_travel_preferences()[static_cast<std::size_t>(axis)];
-    const auto preferred = static_cast<double>(normalized_value) / 10000.0;
-    if (std::abs(config.preferred_travel - preferred) < 0.0001) return;
-    config.preferred_travel = preferred;
+    const auto preferred_minimum = static_cast<double>(normalized_minimum) / 10000.0;
+    const auto preferred_maximum = static_cast<double>(normalized_maximum) / 10000.0;
+    if (std::abs(config.preferred_minimum - preferred_minimum) < 0.0001 &&
+        std::abs(config.preferred_maximum - preferred_maximum) < 0.0001) return;
+    config.preferred_minimum = preferred_minimum;
+    config.preferred_maximum = preferred_maximum;
     engine_.set_axis_travel_preference(static_cast<std::size_t>(axis), config);
     auto settings = motion_bridge_settings();
     const auto axis_name = QString::fromLatin1(kAxisNames[static_cast<std::size_t>(axis)]);
-    settings.setValue(QString("motion/%1/preferredTravel").arg(axis_name), normalized_value);
+    settings.setValue(QString("motion/%1/preferredTravelMinimum").arg(axis_name), normalized_minimum);
+    settings.setValue(QString("motion/%1/preferredTravelMaximum").arg(axis_name), normalized_maximum);
     last_ui_snapshot_.reset();
     publish_axis_travel_preferences();
 }
@@ -146,6 +155,30 @@ void RealtimePipeline::reset_axis_travel_learning(const int axis) {
     if (axis < 0 || axis >= 6) return;
     engine_.reset_axis_travel_learning(static_cast<std::size_t>(axis));
     last_ui_snapshot_.reset();
+}
+
+void RealtimePipeline::set_safety_distance_enabled(const bool enabled) {
+    auto contact = engine_.contact_config();
+    if (contact.safety_distance_enabled == enabled) return;
+    contact.safety_distance_enabled = enabled;
+    engine_.set_contact_config(contact);
+    auto settings = motion_bridge_settings();
+    settings.setValue("contact/safetyDistanceEnabled", enabled);
+    last_ui_snapshot_.reset();
+    publish_contact_settings();
+}
+
+void RealtimePipeline::set_safety_distance_cm(const double centimeters) {
+    const auto normalized = std::clamp(centimeters, 2.0, 50.0);
+    auto contact = engine_.contact_config();
+    const auto meters = normalized / 100.0;
+    if (std::abs(contact.safety_distance_meters - meters) < 0.0001) return;
+    contact.safety_distance_meters = meters;
+    engine_.set_contact_config(contact);
+    auto settings = motion_bridge_settings();
+    settings.setValue("contact/safetyDistanceCm", normalized);
+    last_ui_snapshot_.reset();
+    publish_contact_settings();
 }
 
 void RealtimePipeline::set_output_rate_hz(const int value) {
@@ -509,6 +542,10 @@ void RealtimePipeline::load_settings() {
     contact.lateral_range_meters = contact_number("lateralRangeMeters", contact.lateral_range_meters); contact.twist_range_degrees = contact_number("twistRangeDegrees", contact.twist_range_degrees);
     contact.tilt_range_degrees = contact_number("tiltRangeDegrees", contact.tilt_range_degrees); contact.radius_scale = contact_number("radiusScale", contact.radius_scale);
     contact.invert_l0 = settings.value("contact/invertL0", contact.invert_l0).toBool(); contact.require_contact = settings.value("contact/requireContact", contact.require_contact).toBool();
+    contact.safety_distance_enabled = settings.value(
+        "contact/safetyDistanceEnabled", settings.value("contact/workingDistanceEnabled", false)).toBool();
+    contact.safety_distance_meters = std::clamp(settings.value(
+        "contact/safetyDistanceCm", settings.value("contact/workingDistanceCm", 10.0)).toDouble(), 2.0, 50.0) / 100.0;
     contact.reference_participant = contact_text("referenceParticipant", contact.reference_participant);
     engine_.set_contact_config(contact);
     input_->set_reference_participant(QString::fromStdString(contact.reference_participant));
@@ -517,8 +554,23 @@ void RealtimePipeline::load_settings() {
         auto travel = engine_.axis_travel_preferences()[axis];
         const auto axis_name = QString::fromLatin1(kAxisNames[axis]);
         travel.enabled = settings.value(QString("motion/%1/preferredTravelEnabled").arg(axis_name), false).toBool();
-        travel.preferred_travel = static_cast<double>(std::clamp(
-            settings.value(QString("motion/%1/preferredTravel").arg(axis_name), 6000).toInt(), 1000, 9000)) / 10000.0;
+        const auto minimum_key = QString("motion/%1/preferredTravelMinimum").arg(axis_name);
+        const auto maximum_key = QString("motion/%1/preferredTravelMaximum").arg(axis_name);
+        if (settings.contains(minimum_key) || settings.contains(maximum_key)) {
+            travel.preferred_minimum = static_cast<double>(std::clamp(
+                settings.value(minimum_key, static_cast<int>(std::lround(travel.preferred_minimum * 10000.0))).toInt(), 0, 8999)) / 10000.0;
+            travel.preferred_maximum = static_cast<double>(std::clamp(
+                settings.value(maximum_key, static_cast<int>(std::lround(travel.preferred_maximum * 10000.0))).toInt(), 1000, 9999)) / 10000.0;
+        } else {
+            // Migrate the v0.1.5 preview setting, where one value represented
+            // only the desired span. L0 keeps its 0000-based convention;
+            // other axes remain centered around 5000.
+            const auto legacy_span = std::clamp(
+                settings.value(QString("motion/%1/preferredTravel").arg(axis_name), 6000).toInt(), 1000, 9000);
+            const auto legacy_minimum = axis == 0 ? 0 : (10000 - legacy_span) / 2;
+            travel.preferred_minimum = static_cast<double>(legacy_minimum) / 10000.0;
+            travel.preferred_maximum = static_cast<double>(legacy_minimum + legacy_span) / 10000.0;
+        }
         travel.maximum_gain = axis < 3 ? 4.0 : 2.0;
         engine_.set_axis_travel_preference(axis, travel);
     }
@@ -538,6 +590,7 @@ void RealtimePipeline::load_settings() {
     publish_axis_gains();
     publish_axis_ranges();
     publish_axis_travel_preferences();
+    publish_contact_settings();
     publish_output_processing_settings();
     publish_reference_participant();
     emit reference_participants_changed(reference_participants_);
@@ -570,11 +623,17 @@ void RealtimePipeline::publish_axis_travel_preferences() {
     for (const auto& config : engine_.axis_travel_preferences()) {
         preferences.push_back(QVariantMap{
             {"enabled", config.enabled},
-            {"preferredTravel", static_cast<int>(std::lround(config.preferred_travel * 10000.0))},
+            {"preferredMinimum", static_cast<int>(std::lround(config.preferred_minimum * 10000.0))},
+            {"preferredMaximum", static_cast<int>(std::lround(config.preferred_maximum * 10000.0))},
             {"maximumGain", config.maximum_gain},
         });
     }
     emit axis_travel_preferences_changed(preferences);
+}
+
+void RealtimePipeline::publish_contact_settings() {
+    const auto& contact = engine_.contact_config();
+    emit contact_settings_changed(contact.safety_distance_enabled, contact.safety_distance_meters * 100.0);
 }
 
 void RealtimePipeline::publish_output_processing_settings() {

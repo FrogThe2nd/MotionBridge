@@ -117,8 +117,10 @@ struct ContactConfig {
     double twist_range_degrees{90.0};
     double tilt_range_degrees{30.0};
     double radius_scale{0.22};
+    double safety_distance_meters{0.10};
     bool invert_l0{};
     bool require_contact{};
+    bool safety_distance_enabled{};
 };
 
 enum class MotionCurve { Linear, Smoothstep, Smootherstep };
@@ -138,9 +140,11 @@ enum class PreferredTravelState { Disabled, Learning, Locked, Limited };
 
 struct PreferredTravelConfig {
     bool enabled{};
-    // Peak-to-peak axis excursion in normalized TCode units. A value of 0.6
-    // corresponds to a preferred travel of 6000 on the 0000-9999 display.
-    double preferred_travel{0.6};
+    // Desired output interval for the learned stable motion. The preferred
+    // span is maximum - minimum; extra motion may still use remaining output
+    // headroom outside this interval.
+    double preferred_minimum{};
+    double preferred_maximum{0.6};
     double maximum_gain{4.0};
 };
 

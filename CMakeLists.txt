@@ -46,6 +46,8 @@ if(MOTION_BRIDGE_BUILD_GUI)
         src/app/realtime_pipeline.hpp
         src/app/realtime_pipeline.cpp
         src/app/device_router.hpp
+        src/app/handy_position_output.hpp
+        src/app/handy_position_output.cpp
         src/app/obj_geometry.hpp
         src/app/obj_geometry.cpp
         src/app/fallen_doll_input.cpp

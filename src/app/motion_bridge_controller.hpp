@@ -33,6 +33,8 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QVariantList axisMaximums READ axis_maximums NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisTravelPreferences READ axis_travel_preferences NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisTravelStatuses READ axis_travel_statuses NOTIFY snapshotChanged)
+    Q_PROPERTY(bool safetyDistanceEnabled READ safety_distance_enabled NOTIFY settingsChanged)
+    Q_PROPERTY(double safetyDistanceCm READ safety_distance_cm NOTIFY settingsChanged)
     Q_PROPERTY(int outputRateHz READ output_rate_hz NOTIFY settingsChanged)
     Q_PROPERTY(bool softStartEnabled READ soft_start_enabled NOTIFY settingsChanged)
     Q_PROPERTY(int softStartDurationMs READ soft_start_duration_ms NOTIFY settingsChanged)
@@ -41,6 +43,8 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QString referenceParticipant READ reference_participant NOTIFY settingsChanged)
     Q_PROPERTY(QStringList usbPorts READ usb_ports NOTIFY usbPortsChanged)
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
+    Q_PROPERTY(int displayScalePercent READ display_scale_percent NOTIFY settingsChanged)
+    Q_PROPERTY(bool displayScaleRestartRequired READ display_scale_restart_required NOTIFY settingsChanged)
 
 public:
     explicit MotionBridgeController(QObject* parent = nullptr);
@@ -68,6 +72,8 @@ public:
     [[nodiscard]] QVariantList axis_maximums() const;
     [[nodiscard]] QVariantList axis_travel_preferences() const;
     [[nodiscard]] QVariantList axis_travel_statuses() const;
+    [[nodiscard]] bool safety_distance_enabled() const;
+    [[nodiscard]] double safety_distance_cm() const;
     [[nodiscard]] int output_rate_hz() const;
     [[nodiscard]] bool soft_start_enabled() const;
     [[nodiscard]] int soft_start_duration_ms() const;
@@ -76,6 +82,8 @@ public:
     [[nodiscard]] QString reference_participant() const;
     [[nodiscard]] QStringList usb_ports() const;
     [[nodiscard]] QString theme() const;
+    [[nodiscard]] int display_scale_percent() const;
+    [[nodiscard]] bool display_scale_restart_required() const;
 
     Q_INVOKABLE void set_armed(bool armed);
     Q_INVOKABLE void emergency_stop();
@@ -87,8 +95,10 @@ public:
     Q_INVOKABLE void set_axis_gain(int axis, double value);
     Q_INVOKABLE void set_axis_range(int axis, double minimum, double maximum);
     Q_INVOKABLE void set_axis_preferred_travel_enabled(int axis, bool enabled);
-    Q_INVOKABLE void set_axis_preferred_travel(int axis, int value);
+    Q_INVOKABLE void set_axis_preferred_travel_range(int axis, int minimum, int maximum);
     Q_INVOKABLE void reset_axis_travel_learning(int axis);
+    Q_INVOKABLE void set_safety_distance_enabled(bool enabled);
+    Q_INVOKABLE void set_safety_distance_cm(double centimeters);
     Q_INVOKABLE void set_output_rate_hz(int value);
     Q_INVOKABLE void set_soft_start_enabled(bool enabled);
     Q_INVOKABLE void set_soft_start_duration_ms(int value);
@@ -106,6 +116,7 @@ public:
     Q_INVOKABLE void refresh_usb_ports();
     Q_INVOKABLE void set_theme(const QString& theme);
     Q_INVOKABLE void set_reference_participant(const QString& reference);
+    Q_INVOKABLE void set_display_scale_percent(int percent);
     Q_INVOKABLE QVariantMap primary_screen_available_geometry() const;
 
 signals:
@@ -141,6 +152,8 @@ private:
     QVariantList axis_maximums_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
     QVariantList axis_travel_preferences_;
     QVariantList axis_travel_statuses_;
+    bool safety_distance_enabled_{};
+    double safety_distance_cm_{10.0};
     int output_rate_hz_{50};
     bool soft_start_enabled_{true};
     int soft_start_duration_ms_{600};
@@ -150,4 +163,6 @@ private:
     QStringList usb_ports_;
     QTimer usb_scan_timer_;
     QString theme_{"dark"};
+    int display_scale_percent_{};
+    int startup_display_scale_percent_{};
 };

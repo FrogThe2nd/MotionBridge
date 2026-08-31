@@ -1,4 +1,5 @@
 #include "motion_bridge_controller.hpp"
+#include "motion_bridge_settings.hpp"
 
 #include <QGuiApplication>
 #include <QMetaObject>
@@ -8,6 +9,9 @@
 #include <algorithm>
 
 MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent), pipeline_(new RealtimePipeline) {
+    auto ui_settings = motion_bridge_settings();
+    display_scale_percent_ = normalize_ui_scale_percent(ui_settings.value("ui/displayScalePercent", 0).toInt());
+    startup_display_scale_percent_ = display_scale_percent_;
     pipeline_->moveToThread(&realtime_thread_);
     connect(&realtime_thread_, &QThread::finished, pipeline_, &QObject::deleteLater);
     connect(pipeline_, &RealtimePipeline::snapshot_ready, this, [this](const QString& state, const QString& action, const QString& reference_plane, const QVariantList& raw, const QVariantList& smart_limit_inputs, const QVariantList& device, const QVariantList& preferred_travel_statuses) {
@@ -33,6 +37,11 @@ MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent
     });
     connect(pipeline_, &RealtimePipeline::axis_travel_preferences_changed, this, [this](const QVariantList& preferences) {
         axis_travel_preferences_ = preferences;
+        emit settingsChanged();
+    });
+    connect(pipeline_, &RealtimePipeline::contact_settings_changed, this, [this](const bool safety_distance_enabled, const double safety_distance_cm) {
+        safety_distance_enabled_ = safety_distance_enabled;
+        safety_distance_cm_ = safety_distance_cm;
         emit settingsChanged();
     });
     connect(pipeline_, &RealtimePipeline::output_processing_settings_changed, this,
@@ -91,6 +100,8 @@ QVariantList MotionBridgeController::axis_minimums() const { return axis_minimum
 QVariantList MotionBridgeController::axis_maximums() const { return axis_maximums_; }
 QVariantList MotionBridgeController::axis_travel_preferences() const { return axis_travel_preferences_; }
 QVariantList MotionBridgeController::axis_travel_statuses() const { return axis_travel_statuses_; }
+bool MotionBridgeController::safety_distance_enabled() const { return safety_distance_enabled_; }
+double MotionBridgeController::safety_distance_cm() const { return safety_distance_cm_; }
 int MotionBridgeController::output_rate_hz() const { return output_rate_hz_; }
 bool MotionBridgeController::soft_start_enabled() const { return soft_start_enabled_; }
 int MotionBridgeController::soft_start_duration_ms() const { return soft_start_duration_ms_; }
@@ -99,6 +110,8 @@ QVariantList MotionBridgeController::reference_participants() const { return ref
 QString MotionBridgeController::reference_participant() const { return reference_participant_; }
 QStringList MotionBridgeController::usb_ports() const { return usb_ports_; }
 QString MotionBridgeController::theme() const { return theme_; }
+int MotionBridgeController::display_scale_percent() const { return display_scale_percent_; }
+bool MotionBridgeController::display_scale_restart_required() const { return display_scale_percent_ != startup_display_scale_percent_; }
 
 void MotionBridgeController::set_armed(const bool armed) { QMetaObject::invokeMethod(pipeline_, "set_armed", Qt::QueuedConnection, Q_ARG(bool, armed)); }
 void MotionBridgeController::emergency_stop() { QMetaObject::invokeMethod(pipeline_, "emergency_stop", Qt::QueuedConnection); }
@@ -110,8 +123,10 @@ void MotionBridgeController::set_handy_connection_key(const QString& key) { QMet
 void MotionBridgeController::set_axis_gain(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_gain", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
 void MotionBridgeController::set_axis_range(const int axis, const double minimum, const double maximum) { QMetaObject::invokeMethod(pipeline_, "set_axis_range", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, minimum), Q_ARG(double, maximum)); }
 void MotionBridgeController::set_axis_preferred_travel_enabled(const int axis, const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_axis_preferred_travel_enabled", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(bool, enabled)); }
-void MotionBridgeController::set_axis_preferred_travel(const int axis, const int value) { QMetaObject::invokeMethod(pipeline_, "set_axis_preferred_travel", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(int, value)); }
+void MotionBridgeController::set_axis_preferred_travel_range(const int axis, const int minimum, const int maximum) { QMetaObject::invokeMethod(pipeline_, "set_axis_preferred_travel_range", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(int, minimum), Q_ARG(int, maximum)); }
 void MotionBridgeController::reset_axis_travel_learning(const int axis) { QMetaObject::invokeMethod(pipeline_, "reset_axis_travel_learning", Qt::QueuedConnection, Q_ARG(int, axis)); }
+void MotionBridgeController::set_safety_distance_enabled(const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_safety_distance_enabled", Qt::QueuedConnection, Q_ARG(bool, enabled)); }
+void MotionBridgeController::set_safety_distance_cm(const double centimeters) { QMetaObject::invokeMethod(pipeline_, "set_safety_distance_cm", Qt::QueuedConnection, Q_ARG(double, centimeters)); }
 void MotionBridgeController::set_output_rate_hz(const int value) { QMetaObject::invokeMethod(pipeline_, "set_output_rate_hz", Qt::QueuedConnection, Q_ARG(int, value)); }
 void MotionBridgeController::set_soft_start_enabled(const bool enabled) { QMetaObject::invokeMethod(pipeline_, "set_soft_start_enabled", Qt::QueuedConnection, Q_ARG(bool, enabled)); }
 void MotionBridgeController::set_soft_start_duration_ms(const int value) { QMetaObject::invokeMethod(pipeline_, "set_soft_start_duration_ms", Qt::QueuedConnection, Q_ARG(int, value)); }
@@ -154,4 +169,14 @@ void MotionBridgeController::refresh_usb_ports() {
 
 void MotionBridgeController::set_theme(const QString& theme) {
     QMetaObject::invokeMethod(pipeline_, "set_theme", Qt::QueuedConnection, Q_ARG(QString, theme));
+}
+
+void MotionBridgeController::set_display_scale_percent(const int percent) {
+    const auto normalized = normalize_ui_scale_percent(percent);
+    if (display_scale_percent_ == normalized) return;
+    display_scale_percent_ = normalized;
+    auto settings = motion_bridge_settings();
+    settings.setValue("ui/displayScalePercent", display_scale_percent_);
+    settings.sync();
+    emit settingsChanged();
 }

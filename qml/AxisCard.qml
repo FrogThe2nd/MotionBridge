@@ -38,7 +38,8 @@ Rectangle {
     readonly property real speedLimit: outputSettings && outputSettings.maxSpeed !== undefined ? outputSettings.maxSpeed : 4.0
     readonly property var axisLabels: ["L0", "L1", "L2", "R0", "R1", "R2"]
     readonly property bool preferredTravelEnabled: travelPreference && travelPreference.enabled === true
-    readonly property int preferredTravel: travelPreference && travelPreference.preferredTravel !== undefined ? travelPreference.preferredTravel : 6000
+    readonly property int preferredMinimum: travelPreference && travelPreference.preferredMinimum !== undefined ? travelPreference.preferredMinimum : (axisIndex === 0 ? 0 : 2000)
+    readonly property int preferredMaximum: travelPreference && travelPreference.preferredMaximum !== undefined ? travelPreference.preferredMaximum : (axisIndex === 0 ? 6000 : 8000)
     readonly property real preferredTravelMaximumGain: travelPreference && travelPreference.maximumGain !== undefined ? travelPreference.maximumGain : (axisIndex < 3 ? 4.0 : 2.0)
     readonly property string preferredTravelState: travelStatus && travelStatus.state !== undefined ? travelStatus.state : "disabled"
     readonly property int observedTravel: travelStatus && travelStatus.observedTravel !== undefined ? travelStatus.observedTravel : 0
@@ -250,7 +251,7 @@ Rectangle {
                 }
                 AppToolTip {
                     visible: preferredTravelButton.hovered
-                    text: qsTr("Preferred %1 travel").arg(root.axisLabels[root.axisIndex])
+                    text: qsTr("Preferred %1 range").arg(root.axisLabels[root.axisIndex])
                     darkTheme: root.darkTheme
                 }
             }
@@ -457,7 +458,7 @@ Rectangle {
             spacing: 9
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: qsTr("PREFERRED %1 TRAVEL").arg(root.axisLabels[root.axisIndex]); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Label { text: qsTr("PREFERRED %1 RANGE").arg(root.axisLabels[root.axisIndex]); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 CompactToggle {
                     checked: root.preferredTravelEnabled
@@ -467,17 +468,33 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 enabled: root.preferredTravelEnabled
-                Label { text: qsTr("TARGET"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Label { text: qsTr("MINIMUM"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 StableStepper {
                     Layout.preferredWidth: 112
-                    from: 1000; to: 9000; stepSize: 100
-                    value: root.preferredTravel
+                    from: 0; to: Math.max(0, root.preferredMaximum - 1000); stepSize: 100
+                    value: root.preferredMinimum
                     decimals: 0
                     suffixText: ""
                     numberWidth: 46
                     suffixWidth: 0
-                    onValueModified: (nextValue) => root.controller.set_axis_preferred_travel(root.axisIndex, nextValue)
+                    onValueModified: (nextValue) => root.controller.set_axis_preferred_travel_range(root.axisIndex, nextValue, root.preferredMaximum)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                enabled: root.preferredTravelEnabled
+                Label { text: qsTr("MAXIMUM"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Item { Layout.fillWidth: true }
+                StableStepper {
+                    Layout.preferredWidth: 112
+                    from: Math.min(9999, root.preferredMinimum + 1000); to: 9999; stepSize: 100
+                    value: root.preferredMaximum
+                    decimals: 0
+                    suffixText: ""
+                    numberWidth: 46
+                    suffixWidth: 0
+                    onValueModified: (nextValue) => root.controller.set_axis_preferred_travel_range(root.axisIndex, root.preferredMinimum, nextValue)
                 }
             }
             Rectangle {
@@ -497,7 +514,7 @@ Rectangle {
             }
             Label {
                 Layout.fillWidth: true
-                text: qsTr("Learns a stable main stroke, then only enlarges short travel. Extra motion keeps the remaining headroom.")
+                text: qsTr("Maps the learned stable endpoints to this preferred interval. Extra motion keeps the remaining headroom.")
                 wrapMode: Text.WordWrap
                 color: root.mutedText
                 font.pixelSize: 9

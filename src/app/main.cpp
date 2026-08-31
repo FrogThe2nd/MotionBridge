@@ -1,11 +1,13 @@
 #include "motion_bridge_controller.hpp"
 #include "language_controller.hpp"
+#include "motion_bridge_settings.hpp"
 #include "obj_geometry.hpp"
 
 #include <QGuiApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -65,6 +67,13 @@ int main(int argc, char* argv[]) {
 #endif
     qInstallMessageHandler(startup_message_handler);
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
+    const auto executable_directory = QFileInfo(QString::fromLocal8Bit(argv[0])).absolutePath();
+    auto startup_settings = motion_bridge_settings(executable_directory);
+    const auto ui_scale_percent = normalize_ui_scale_percent(
+        startup_settings.value("ui/displayScalePercent", 0).toInt());
+    if (ui_scale_percent > 0) {
+        qputenv("QT_SCALE_FACTOR", QByteArray::number(static_cast<double>(ui_scale_percent) / 100.0, 'f', 2));
+    }
     QGuiApplication app(argc, argv);
     // Repeated crash dumps on this Windows installation fail inside dxgi.dll
     // from Qt Quick's D3D rendering path. OpenGL is fully supported by both

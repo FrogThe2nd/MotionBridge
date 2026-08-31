@@ -480,7 +480,7 @@ void test_l0_preferred_travel_is_disabled_by_default() {
 
 void test_l0_preferred_travel_expands_only_after_stable_loop() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "ShortLoop";
     frame.l0_reference_length = true;
@@ -502,7 +502,7 @@ void test_l0_preferred_travel_expands_only_after_stable_loop() {
 
 void test_l0_preferred_travel_never_shrinks_large_motion() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "LargeLoop";
     frame.l0_reference_length = true;
@@ -514,7 +514,7 @@ void test_l0_preferred_travel_never_shrinks_large_motion() {
 
 void test_l0_preferred_travel_ignores_trigger_after_lock() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "TriggerLoop";
     frame.l0_reference_length = true;
@@ -528,7 +528,7 @@ void test_l0_preferred_travel_ignores_trigger_after_lock() {
 
 void test_l0_preferred_travel_caps_gain_and_caches_by_action() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "TinyLoop";
     frame.l0_reference_length = true;
@@ -553,7 +553,7 @@ void test_l0_preferred_travel_caps_gain_and_caches_by_action() {
 
 void test_l0_preferred_travel_does_not_learn_noise_or_one_way_motion() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "OneWay";
     frame.l0_reference_length = true;
@@ -576,7 +576,7 @@ void test_l0_preferred_travel_runs_before_manual_gain() {
     auto tuning = engine.axis_tuning();
     tuning[0].gain = 1.5;
     engine.set_axis_tuning(tuning);
-    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "GainLoop";
     frame.l0_reference_length = true;
@@ -588,7 +588,7 @@ void test_l0_preferred_travel_runs_before_manual_gain() {
 
 void test_preferred_travel_is_independent_for_other_axes() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(1, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(1, {true, 0.2, 0.8, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "L1ShortLoop";
     frame.l0_reference_length = true;
@@ -603,12 +603,62 @@ void test_preferred_travel_is_independent_for_other_axes() {
     require_close(high.raw_axes[0], 0.5);
 }
 
+void test_preferred_travel_maps_stable_endpoints_to_configured_interval() {
+    MotionEngine engine;
+    engine.set_axis_travel_preference(0, {true, 0.1, 0.7, 4.0});
+    auto frame = orthogonal_frame();
+    frame.action_id = "OffsetPreferredRange";
+    frame.l0_reference_length = true;
+    learn_l0_loop(engine, frame, 0.2, 0.4);
+
+    require_close(process_l0(engine, frame, 0.2, 1400).raw_axes[0], 0.1);
+    require_close(process_l0(engine, frame, 0.4, 1500).raw_axes[0], 0.7);
+    // A short extra movement keeps the same fixed mapping and can extend
+    // beyond the learned preferred interval without changing it.
+    require_close(process_l0(engine, frame, 0.5, 1600).raw_axes[0], 1.0);
+}
+
 void test_rotational_preferred_travel_uses_conservative_gain_cap() {
     MotionEngine engine;
-    engine.set_axis_travel_preference(2, {true, 0.6, 4.0});
-    engine.set_axis_travel_preference(3, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(2, {true, 0.2, 0.8, 4.0});
+    engine.set_axis_travel_preference(3, {true, 0.2, 0.8, 4.0});
     require_close(engine.axis_travel_preferences()[2].maximum_gain, 4.0);
     require_close(engine.axis_travel_preferences()[3].maximum_gain, 2.0);
+}
+
+void test_safety_distance_blocks_far_initial_signal_and_learning() {
+    MotionEngine engine;
+    auto contact = engine.contact_config();
+    contact.safety_distance_enabled = true;
+    contact.safety_distance_meters = 0.10;
+    engine.set_contact_config(contact);
+    engine.set_axis_travel_preference(0, {true, 0.0, 0.6, 4.0});
+
+    auto frame = orthogonal_frame();
+    frame.action_id = "FarInitialization";
+    frame.l0_reference_length = true;
+    frame.participants[1].bones["M_Gen"].position.x = 0.20;
+    for (int step = 0; step <= 8; ++step) {
+        const auto snapshot = process_l0(engine, frame, step % 2 == 0 ? 0.1 : 0.3, step * 100);
+        assert(snapshot.state == MotionState::Idle);
+        require_close(snapshot.device_axes[0], 0.5);
+    }
+
+    frame.participants[1].bones["M_Gen"].position.x = 0.0;
+    const auto entered = process_l0(engine, frame, 0.1, 1000);
+    assert(entered.state == MotionState::Active);
+    assert(entered.preferred_travel[0].state == PreferredTravelState::Learning);
+    assert(entered.preferred_travel[0].stable_half_strokes == 0);
+
+    frame.participants[1].bones["M_Gen"].position.x = 0.20;
+    assert(process_l0(engine, frame, 0.2, 1100).state == MotionState::Holding);
+}
+
+void test_safety_distance_is_backward_compatible_when_disabled() {
+    MotionEngine engine;
+    auto frame = orthogonal_frame();
+    frame.participants[1].bones["M_Gen"].position.x = 0.30;
+    assert(engine.process(frame).state == MotionState::Active);
 }
 
 void test_humanoid_pelvis_plane_overrides_single_support_rotation() {
@@ -867,7 +917,10 @@ int main() {
     test_l0_preferred_travel_does_not_learn_noise_or_one_way_motion();
     test_l0_preferred_travel_runs_before_manual_gain();
     test_preferred_travel_is_independent_for_other_axes();
+    test_preferred_travel_maps_stable_endpoints_to_configured_interval();
     test_rotational_preferred_travel_uses_conservative_gain_cap();
+    test_safety_distance_blocks_far_initial_signal_and_learning();
+    test_safety_distance_is_backward_compatible_when_disabled();
     test_humanoid_pelvis_plane_overrides_single_support_rotation();
     test_profile_plane_uses_native_nonhuman_landmarks();
     test_twist_remains_relative_when_reference_crosses_a_turn();
