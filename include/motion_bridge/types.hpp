@@ -134,18 +134,18 @@ struct AxisTuning {
     bool inverted{};
 };
 
-enum class L0TravelState { Disabled, Learning, Locked, Limited };
+enum class PreferredTravelState { Disabled, Learning, Locked, Limited };
 
-struct L0TravelPreferenceConfig {
+struct PreferredTravelConfig {
     bool enabled{};
-    // Peak-to-peak L0 excursion in normalized TCode units. A value of 0.6
+    // Peak-to-peak axis excursion in normalized TCode units. A value of 0.6
     // corresponds to a preferred travel of 6000 on the 0000-9999 display.
     double preferred_travel{0.6};
     double maximum_gain{4.0};
 };
 
-struct L0TravelStatus {
-    L0TravelState state{L0TravelState::Disabled};
+struct PreferredTravelStatus {
+    PreferredTravelState state{PreferredTravelState::Disabled};
     double observed_travel{};
     double applied_gain{1.0};
     unsigned int stable_half_strokes{};
@@ -178,7 +178,7 @@ struct EngineSnapshot {
     MotionState state{MotionState::Idle};
     Axes raw_axes;
     Axes device_axes;
-    L0TravelStatus l0_travel;
+    std::array<PreferredTravelStatus, 6> preferred_travel;
     ContactStatus contact;
     std::string action_id;
     std::string action_category;

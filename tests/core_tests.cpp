@@ -452,6 +452,22 @@ void learn_l0_loop(MotionEngine& engine, MotionFrame& frame, const double low, c
     }
 }
 
+EngineSnapshot process_l1(MotionEngine& engine, MotionFrame& frame, const double value, const int milliseconds) {
+    // The synthetic frame's reference-forward direction is -Z and the
+    // default lateral range is +/-0.15 m.
+    frame.participants[1].bones["M_Gen"].position.z = -(value - 0.5) * 0.30;
+    frame.monotonic_time = std::chrono::milliseconds{milliseconds};
+    ++frame.sequence;
+    return engine.process(frame);
+}
+
+void learn_l1_loop(MotionEngine& engine, MotionFrame& frame, const double low, const double high) {
+    (void)process_l1(engine, frame, low, 0);
+    for (int step = 1; step <= 8; ++step) {
+        (void)process_l1(engine, frame, step % 2 == 0 ? low : high, step * 100);
+    }
+}
+
 void test_l0_preferred_travel_is_disabled_by_default() {
     MotionEngine engine;
     auto frame = orthogonal_frame();
@@ -459,12 +475,12 @@ void test_l0_preferred_travel_is_disabled_by_default() {
     learn_l0_loop(engine, frame, 0.0, 0.2);
     const auto snapshot = process_l0(engine, frame, 0.2, 1400);
     require_close(snapshot.raw_axes[0], 0.2);
-    assert(snapshot.l0_travel.state == L0TravelState::Disabled);
+    assert(snapshot.preferred_travel[0].state == PreferredTravelState::Disabled);
 }
 
 void test_l0_preferred_travel_expands_only_after_stable_loop() {
     MotionEngine engine;
-    engine.set_l0_travel_preference({true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "ShortLoop";
     frame.l0_reference_length = true;
@@ -472,33 +488,33 @@ void test_l0_preferred_travel_expands_only_after_stable_loop() {
     // Before six stable half-strokes the original geometric L0 is preserved.
     for (int step = 0; step < 6; ++step) {
         const auto snapshot = process_l0(engine, frame, step % 2 == 0 ? 0.0 : 0.2, step * 100);
-        assert(snapshot.l0_travel.state == L0TravelState::Learning);
+        assert(snapshot.preferred_travel[0].state == PreferredTravelState::Learning);
         require_close(snapshot.raw_axes[0], step % 2 == 0 ? 0.0 : 0.2);
     }
     learn_l0_loop(engine, frame, 0.0, 0.2);
     const auto high = process_l0(engine, frame, 0.2, 1400);
-    assert(high.l0_travel.state == L0TravelState::Locked);
-    require_close(high.l0_travel.observed_travel, 0.2);
-    require_close(high.l0_travel.applied_gain, 3.0);
+    assert(high.preferred_travel[0].state == PreferredTravelState::Locked);
+    require_close(high.preferred_travel[0].observed_travel, 0.2);
+    require_close(high.preferred_travel[0].applied_gain, 3.0);
     require_close(high.raw_axes[0], 0.6);
     require_close(process_l0(engine, frame, 0.0, 1500).raw_axes[0], 0.0);
 }
 
 void test_l0_preferred_travel_never_shrinks_large_motion() {
     MotionEngine engine;
-    engine.set_l0_travel_preference({true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "LargeLoop";
     frame.l0_reference_length = true;
     learn_l0_loop(engine, frame, 0.1, 0.8);
     const auto high = process_l0(engine, frame, 0.8, 1400);
-    require_close(high.l0_travel.applied_gain, 1.0);
+    require_close(high.preferred_travel[0].applied_gain, 1.0);
     require_close(high.raw_axes[0], 0.8);
 }
 
 void test_l0_preferred_travel_ignores_trigger_after_lock() {
     MotionEngine engine;
-    engine.set_l0_travel_preference({true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "TriggerLoop";
     frame.l0_reference_length = true;
@@ -506,51 +522,51 @@ void test_l0_preferred_travel_ignores_trigger_after_lock() {
     (void)process_l0(engine, frame, 0.2, 1400);
     const auto trigger = process_l0(engine, frame, 0.3, 1500);
     require_close(trigger.raw_axes[0], 0.9);
-    require_close(trigger.l0_travel.observed_travel, 0.2);
-    require_close(trigger.l0_travel.applied_gain, 3.0);
+    require_close(trigger.preferred_travel[0].observed_travel, 0.2);
+    require_close(trigger.preferred_travel[0].applied_gain, 3.0);
 }
 
 void test_l0_preferred_travel_caps_gain_and_caches_by_action() {
     MotionEngine engine;
-    engine.set_l0_travel_preference({true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "TinyLoop";
     frame.l0_reference_length = true;
     learn_l0_loop(engine, frame, 0.0, 0.1);
     const auto limited = process_l0(engine, frame, 0.1, 1400);
-    assert(limited.l0_travel.state == L0TravelState::Limited);
-    require_close(limited.l0_travel.applied_gain, 4.0);
+    assert(limited.preferred_travel[0].state == PreferredTravelState::Limited);
+    require_close(limited.preferred_travel[0].applied_gain, 4.0);
     require_close(limited.raw_axes[0], 0.4);
 
     frame.action_id = "OtherLoop";
-    assert(process_l0(engine, frame, 0.1, 1500).l0_travel.state == L0TravelState::Learning);
+    assert(process_l0(engine, frame, 0.1, 1500).preferred_travel[0].state == PreferredTravelState::Learning);
     frame.action_id = "TinyLoop";
     const auto cached = process_l0(engine, frame, 0.1, 1600);
-    assert(cached.l0_travel.state == L0TravelState::Limited);
+    assert(cached.preferred_travel[0].state == PreferredTravelState::Limited);
     require_close(cached.raw_axes[0], 0.4);
 
-    engine.reset_l0_travel_learning();
+    engine.reset_axis_travel_learning(0);
     const auto reset = process_l0(engine, frame, 0.1, 1700);
-    assert(reset.l0_travel.state == L0TravelState::Learning);
+    assert(reset.preferred_travel[0].state == PreferredTravelState::Learning);
     require_close(reset.raw_axes[0], 0.1);
 }
 
 void test_l0_preferred_travel_does_not_learn_noise_or_one_way_motion() {
     MotionEngine engine;
-    engine.set_l0_travel_preference({true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "OneWay";
     frame.l0_reference_length = true;
     for (int step = 0; step <= 10; ++step) {
         const auto value = static_cast<double>(step) * 0.05;
         const auto snapshot = process_l0(engine, frame, value, step * 100);
-        assert(snapshot.l0_travel.state == L0TravelState::Learning);
+        assert(snapshot.preferred_travel[0].state == PreferredTravelState::Learning);
         require_close(snapshot.raw_axes[0], value);
     }
     for (int step = 11; step <= 30; ++step) {
         const auto value = 0.5 + (step % 2 == 0 ? 0.003 : -0.003);
         const auto snapshot = process_l0(engine, frame, value, step * 100);
-        assert(snapshot.l0_travel.state == L0TravelState::Learning);
+        assert(snapshot.preferred_travel[0].state == PreferredTravelState::Learning);
         require_close(snapshot.raw_axes[0], value);
     }
 }
@@ -560,7 +576,7 @@ void test_l0_preferred_travel_runs_before_manual_gain() {
     auto tuning = engine.axis_tuning();
     tuning[0].gain = 1.5;
     engine.set_axis_tuning(tuning);
-    engine.set_l0_travel_preference({true, 0.6, 4.0});
+    engine.set_axis_travel_preference(0, {true, 0.6, 4.0});
     auto frame = orthogonal_frame();
     frame.action_id = "GainLoop";
     frame.l0_reference_length = true;
@@ -568,6 +584,31 @@ void test_l0_preferred_travel_runs_before_manual_gain() {
     const auto high = process_l0(engine, frame, 0.2, 1400);
     require_close(high.raw_axes[0], 0.6);
     require_close(high.device_axes[0], 0.75);
+}
+
+void test_preferred_travel_is_independent_for_other_axes() {
+    MotionEngine engine;
+    engine.set_axis_travel_preference(1, {true, 0.6, 4.0});
+    auto frame = orthogonal_frame();
+    frame.action_id = "L1ShortLoop";
+    frame.l0_reference_length = true;
+    learn_l1_loop(engine, frame, 0.4, 0.6);
+
+    const auto high = process_l1(engine, frame, 0.6, 1400);
+    assert(high.preferred_travel[0].state == PreferredTravelState::Disabled);
+    assert(high.preferred_travel[1].state == PreferredTravelState::Locked);
+    require_close(high.preferred_travel[1].observed_travel, 0.2);
+    require_close(high.preferred_travel[1].applied_gain, 3.0);
+    require_close(high.raw_axes[1], 0.8);
+    require_close(high.raw_axes[0], 0.5);
+}
+
+void test_rotational_preferred_travel_uses_conservative_gain_cap() {
+    MotionEngine engine;
+    engine.set_axis_travel_preference(2, {true, 0.6, 4.0});
+    engine.set_axis_travel_preference(3, {true, 0.6, 4.0});
+    require_close(engine.axis_travel_preferences()[2].maximum_gain, 4.0);
+    require_close(engine.axis_travel_preferences()[3].maximum_gain, 2.0);
 }
 
 void test_humanoid_pelvis_plane_overrides_single_support_rotation() {
@@ -825,6 +866,8 @@ int main() {
     test_l0_preferred_travel_caps_gain_and_caches_by_action();
     test_l0_preferred_travel_does_not_learn_noise_or_one_way_motion();
     test_l0_preferred_travel_runs_before_manual_gain();
+    test_preferred_travel_is_independent_for_other_axes();
+    test_rotational_preferred_travel_uses_conservative_gain_cap();
     test_humanoid_pelvis_plane_overrides_single_support_rotation();
     test_profile_plane_uses_native_nonhuman_landmarks();
     test_twist_remains_relative_when_reference_crosses_a_turn();

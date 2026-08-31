@@ -31,9 +31,9 @@ public slots:
     void set_handy_connection_key(const QString& key);
     void set_axis_gain(int axis, double value);
     void set_axis_range(int axis, double minimum, double maximum);
-    void set_l0_preferred_travel_enabled(bool enabled);
-    void set_l0_preferred_travel(int value);
-    void reset_l0_travel_learning();
+    void set_axis_preferred_travel_enabled(int axis, bool enabled);
+    void set_axis_preferred_travel(int axis, int value);
+    void reset_axis_travel_learning(int axis);
     void set_output_rate_hz(int value);
     void set_soft_start_enabled(bool enabled);
     void set_soft_start_duration_ms(int value);
@@ -54,7 +54,7 @@ public slots:
 signals:
     void snapshot_ready(const QString& state, const QString& action, const QString& reference_plane,
                         const QVariantList& raw, const QVariantList& smart_limit_inputs,
-                        const QVariantList& device, const QVariantMap& l0_travel);
+                        const QVariantList& device, const QVariantList& preferred_travel_statuses);
     void stream_status_changed(bool connected, const QString& text);
     void output_status_changed(const QString& text, bool armed, const QString& mode);
     void spool_path_changed(const QString& path);
@@ -62,7 +62,7 @@ signals:
                                      const QString& intiface_url, const QString& handy_connection_key);
     void axis_gains_changed(const QVariantList& gains);
     void axis_ranges_changed(const QVariantList& minimums, const QVariantList& maximums);
-    void l0_travel_preference_changed(bool enabled, int preferred_travel);
+    void axis_travel_preferences_changed(const QVariantList& preferences);
     void output_processing_settings_changed(int rate_hz, bool soft_start_enabled, int soft_start_duration_ms,
                                             const QVariantList& axis_output_settings);
     void theme_changed(const QString& theme);
@@ -80,7 +80,7 @@ private:
     void publish_connection_settings();
     void publish_axis_gains();
     void publish_axis_ranges();
-    void publish_l0_travel_preference();
+    void publish_axis_travel_preferences();
     void publish_output_processing_settings();
     void publish_participant_choices(const motion_bridge::MotionFrame& frame);
     void publish_reference_participant();

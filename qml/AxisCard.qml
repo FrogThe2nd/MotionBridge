@@ -16,12 +16,8 @@ Rectangle {
     property real outputMinimum: 0.0
     property real outputMaximum: 1.0
     property var outputSettings: ({})
-    property bool l0PreferredTravelEnabled: false
-    property int l0PreferredTravel: 6000
-    property string l0TravelState: "disabled"
-    property int l0ObservedTravel: 0
-    property real l0AutomaticGain: 1.0
-    property int l0StableHalfStrokes: 0
+    property var travelPreference: ({})
+    property var travelStatus: ({})
     Layout.fillWidth: true
     Layout.preferredHeight: 128
     radius: 15
@@ -41,6 +37,13 @@ Rectangle {
     readonly property bool speedEnabled: outputSettings && outputSettings.speedEnabled === true
     readonly property real speedLimit: outputSettings && outputSettings.maxSpeed !== undefined ? outputSettings.maxSpeed : 4.0
     readonly property var axisLabels: ["L0", "L1", "L2", "R0", "R1", "R2"]
+    readonly property bool preferredTravelEnabled: travelPreference && travelPreference.enabled === true
+    readonly property int preferredTravel: travelPreference && travelPreference.preferredTravel !== undefined ? travelPreference.preferredTravel : 6000
+    readonly property real preferredTravelMaximumGain: travelPreference && travelPreference.maximumGain !== undefined ? travelPreference.maximumGain : (axisIndex < 3 ? 4.0 : 2.0)
+    readonly property string preferredTravelState: travelStatus && travelStatus.state !== undefined ? travelStatus.state : "disabled"
+    readonly property int observedTravel: travelStatus && travelStatus.observedTravel !== undefined ? travelStatus.observedTravel : 0
+    readonly property real automaticGain: travelStatus && travelStatus.automaticGain !== undefined ? travelStatus.automaticGain : 1.0
+    readonly property int stableHalfStrokes: travelStatus && travelStatus.stableHalfStrokes !== undefined ? travelStatus.stableHalfStrokes : 0
     readonly property bool smartLimitEnabled: outputSettings && outputSettings.smartLimitEnabled === true
     readonly property int smartLimitInputAxis: outputSettings && outputSettings.smartLimitInputAxis !== undefined ? outputSettings.smartLimitInputAxis : 0
     readonly property string smartLimitMode: outputSettings && outputSettings.smartLimitMode !== undefined ? outputSettings.smartLimitMode : "value"
@@ -52,11 +55,11 @@ Rectangle {
     readonly property real smartLimitInputValue: Math.max(0, Math.min(1,
         axisValues && axisValues.length > smartLimitInputAxis ? axisValues[smartLimitInputAxis] : axisValue))
 
-    function l0TravelStatusText() {
-        if (!root.l0PreferredTravelEnabled || root.l0TravelState === "disabled") return qsTr("Off")
-        if (root.l0TravelState === "learning") return qsTr("Learning · %1/6").arg(Math.min(6, root.l0StableHalfStrokes))
-        if (root.l0TravelState === "limited") return qsTr("4× limit · %1 travel").arg(root.l0ObservedTravel.toString().padStart(4, "0"))
-        return qsTr("Locked · %1×").arg(root.l0AutomaticGain.toFixed(2))
+    function preferredTravelStatusText() {
+        if (!root.preferredTravelEnabled || root.preferredTravelState === "disabled") return qsTr("Off")
+        if (root.preferredTravelState === "learning") return qsTr("Learning · %1/6").arg(Math.min(6, root.stableHalfStrokes))
+        if (root.preferredTravelState === "limited") return qsTr("%1× limit · %2 travel").arg(root.preferredTravelMaximumGain.toFixed(0)).arg(root.observedTravel.toString().padStart(4, "0"))
+        return qsTr("Locked · %1×").arg(root.automaticGain.toFixed(2))
     }
 
     component CompactToggle: AbstractButton {
@@ -210,28 +213,27 @@ Rectangle {
             Label { text: root.axisName; color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.7 }
             Item { Layout.fillWidth: true }
             ToolButton {
-                id: l0TravelButton
-                visible: root.axisIndex === 0
-                Layout.preferredWidth: visible ? 22 : 0; Layout.preferredHeight: 22
+                id: preferredTravelButton
+                Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
                     speedPopup.close()
                     smartLimitPopup.close()
-                    root.openPopupNear(l0TravelButton, l0TravelPopup)
+                    root.openPopupNear(preferredTravelButton, preferredTravelPopup)
                 }
                 background: Rectangle {
                     radius: 6
-                    color: root.l0PreferredTravelEnabled ? (root.darkTheme ? "#173444" : "#E6F7FC")
-                                                         : l0TravelButton.hovered ? root.valueSurface : "transparent"
-                    border.width: root.l0PreferredTravelEnabled ? 1 : 0
+                    color: root.preferredTravelEnabled ? (root.darkTheme ? "#173444" : "#E6F7FC")
+                                                         : preferredTravelButton.hovered ? root.valueSurface : "transparent"
+                    border.width: root.preferredTravelEnabled ? 1 : 0
                     border.color: root.accent
                 }
                 contentItem: Canvas {
-                    id: l0TravelIcon
+                    id: preferredTravelIcon
                     anchors.fill: parent
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.clearRect(0, 0, width, height)
-                        ctx.strokeStyle = root.l0PreferredTravelEnabled ? root.accent : root.secondaryText
+                        ctx.strokeStyle = root.preferredTravelEnabled ? root.accent : root.secondaryText
                         ctx.fillStyle = ctx.strokeStyle
                         ctx.lineWidth = 1.4
                         ctx.lineCap = "round"
@@ -244,11 +246,11 @@ Rectangle {
                         ctx.stroke()
                         ctx.beginPath(); ctx.arc(11, 11, 2, 0, Math.PI * 2); ctx.fill()
                     }
-                    Connections { target: root; function onL0PreferredTravelEnabledChanged() { l0TravelIcon.requestPaint() } }
+                    Connections { target: root; function onPreferredTravelEnabledChanged() { preferredTravelIcon.requestPaint() } }
                 }
                 AppToolTip {
-                    visible: l0TravelButton.hovered
-                    text: qsTr("Preferred L0 travel")
+                    visible: preferredTravelButton.hovered
+                    text: qsTr("Preferred %1 travel").arg(root.axisLabels[root.axisIndex])
                     darkTheme: root.darkTheme
                 }
             }
@@ -257,7 +259,7 @@ Rectangle {
                 Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
                     speedPopup.close()
-                    l0TravelPopup.close()
+                    preferredTravelPopup.close()
                     root.openPopupNear(smartLimitButton, smartLimitPopup)
                 }
                 background: Rectangle {
@@ -295,7 +297,7 @@ Rectangle {
                 Layout.preferredWidth: 22; Layout.preferredHeight: 22
                 onClicked: {
                     smartLimitPopup.close()
-                    l0TravelPopup.close()
+                    preferredTravelPopup.close()
                     root.openPopupNear(speedButton, speedPopup)
                 }
                 background: Rectangle {
@@ -439,7 +441,7 @@ Rectangle {
     }
 
     Popup {
-        id: l0TravelPopup
+        id: preferredTravelPopup
         parent: Overlay.overlay
         width: 252
         padding: 13
@@ -455,27 +457,27 @@ Rectangle {
             spacing: 9
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: qsTr("PREFERRED L0 TRAVEL"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
+                Label { text: qsTr("PREFERRED %1 TRAVEL").arg(root.axisLabels[root.axisIndex]); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 CompactToggle {
-                    checked: root.l0PreferredTravelEnabled
-                    onToggled: root.controller.set_l0_preferred_travel_enabled(checked)
+                    checked: root.preferredTravelEnabled
+                    onToggled: root.controller.set_axis_preferred_travel_enabled(root.axisIndex, checked)
                 }
             }
             RowLayout {
                 Layout.fillWidth: true
-                enabled: root.l0PreferredTravelEnabled
+                enabled: root.preferredTravelEnabled
                 Label { text: qsTr("TARGET"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 StableStepper {
                     Layout.preferredWidth: 112
                     from: 1000; to: 9000; stepSize: 100
-                    value: root.l0PreferredTravel
+                    value: root.preferredTravel
                     decimals: 0
                     suffixText: ""
                     numberWidth: 46
                     suffixWidth: 0
-                    onValueModified: (nextValue) => root.controller.set_l0_preferred_travel(nextValue)
+                    onValueModified: (nextValue) => root.controller.set_axis_preferred_travel(root.axisIndex, nextValue)
                 }
             }
             Rectangle {
@@ -487,9 +489,9 @@ Rectangle {
                 Label { text: qsTr("STATUS"); color: root.secondaryText; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.5 }
                 Item { Layout.fillWidth: true }
                 Label {
-                    text: root.l0TravelStatusText()
-                    color: root.l0TravelState === "limited" ? "#F4B860"
-                         : root.l0TravelState === "locked" ? root.enabledGreen : root.mutedText
+                    text: root.preferredTravelStatusText()
+                    color: root.preferredTravelState === "limited" ? "#F4B860"
+                         : root.preferredTravelState === "locked" ? root.enabledGreen : root.mutedText
                     font.pixelSize: 10; font.family: "Cascadia Mono"
                 }
             }
@@ -504,7 +506,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Label {
-                    text: qsTr("Automatic gain is applied before the L0 Gain control.")
+                    text: qsTr("Automatic gain is applied before this axis Gain control.")
                     color: root.mutedText; font.pixelSize: 8
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
                 }
@@ -512,8 +514,8 @@ Rectangle {
                     id: relearnButton
                     Layout.preferredWidth: 72; Layout.preferredHeight: 26
                     text: qsTr("Relearn")
-                    enabled: root.l0PreferredTravelEnabled
-                    onClicked: root.controller.reset_l0_travel_learning()
+                    enabled: root.preferredTravelEnabled
+                    onClicked: root.controller.reset_axis_travel_learning(root.axisIndex)
                     background: Rectangle {
                         radius: 6
                         color: relearnButton.pressed ? root.valueSurface

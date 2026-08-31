@@ -12,12 +12,12 @@ constexpr double kEpsilon = 1e-8;
 constexpr double kPlaneIntersectionBlendStartAlignment = 0.25;
 constexpr double kPlaneIntersectionFullAlignment = 0.75;
 constexpr double kPlaneIntersectionMaximumCorrectionFraction = 0.25;
-constexpr double kL0TravelReversalHysteresis = 0.008;
-constexpr double kL0TravelMinimumHalfStroke = 0.02;
-constexpr double kL0TravelAbsoluteTolerance = 0.015;
-constexpr std::size_t kL0TravelCandidateLimit = 8;
-constexpr std::size_t kL0TravelRequiredStableHalfStrokes = 6;
-constexpr auto kL0TravelTransitionDuration = std::chrono::microseconds{500000};
+constexpr double kTravelReversalHysteresis = 0.008;
+constexpr double kTravelMinimumHalfStroke = 0.02;
+constexpr double kTravelAbsoluteTolerance = 0.015;
+constexpr std::size_t kTravelCandidateLimit = 8;
+constexpr std::size_t kTravelRequiredStableHalfStrokes = 6;
+constexpr auto kTravelTransitionDuration = std::chrono::microseconds{500000};
 
 [[nodiscard]] Vec3 add(const Vec3 left, const Vec3 right) { return {left.x + right.x, left.y + right.y, left.z + right.z}; }
 [[nodiscard]] Vec3 subtract(const Vec3 left, const Vec3 right) { return {left.x - right.x, left.y - right.y, left.z - right.z}; }
@@ -218,7 +218,11 @@ struct TargetBasis {
 
 double clamp01(const double value) noexcept { return std::clamp(value, 0.0, 1.0); }
 
-MotionEngine::MotionEngine(ContactConfig contact, SafetyConfig safety) : contact_(std::move(contact)), safety_(safety) {}
+MotionEngine::MotionEngine(ContactConfig contact, SafetyConfig safety) : contact_(std::move(contact)), safety_(safety) {
+    for (std::size_t axis = 3; axis < travel_configs_.size(); ++axis) {
+        travel_configs_[axis].maximum_gain = 2.0;
+    }
+}
 void MotionEngine::set_contact_config(ContactConfig contact) {
     contact_ = std::move(contact);
     last_valid_.reset();
@@ -228,151 +232,161 @@ void MotionEngine::set_contact_config(ContactConfig contact) {
     pitch_baseline_.reset();
     gain_binding_key_.clear();
     gain_envelope_valid_.fill(false);
-    l0_travel_cache_.clear();
-    reset_l0_travel_live_state({});
-}
-void MotionEngine::set_axis_tuning(std::array<AxisTuning, 6> tuning) { tuning_ = std::move(tuning); }
-void MotionEngine::set_l0_travel_preference(L0TravelPreferenceConfig config) {
-    config.preferred_travel = std::clamp(config.preferred_travel, 0.1, 0.9);
-    config.maximum_gain = std::clamp(config.maximum_gain, 1.0, 4.0);
-    l0_travel_config_ = config;
-    if (!config.enabled) {
-        l0_travel_status_ = {};
-        l0_optimized_center_.reset();
+    for (std::size_t axis = 0; axis < travel_runtime_.size(); ++axis) {
+        travel_runtime_[axis].cache.clear();
+        reset_axis_travel_live_state(axis, {});
     }
 }
-void MotionEngine::reset_l0_travel_learning() {
-    if (!l0_travel_profile_key_.empty()) l0_travel_cache_.erase(l0_travel_profile_key_);
-    const auto active_key = l0_travel_profile_key_;
-    reset_l0_travel_live_state(active_key);
+void MotionEngine::set_axis_tuning(std::array<AxisTuning, 6> tuning) { tuning_ = std::move(tuning); }
+void MotionEngine::set_axis_travel_preference(const std::size_t axis, PreferredTravelConfig config) {
+    if (axis >= travel_configs_.size()) return;
+    config.preferred_travel = std::clamp(config.preferred_travel, 0.1, 0.9);
+    const auto maximum_allowed_gain = axis < 3 ? 4.0 : 2.0;
+    config.maximum_gain = std::clamp(config.maximum_gain, 1.0, maximum_allowed_gain);
+    travel_configs_[axis] = config;
+    if (!config.enabled) {
+        travel_runtime_[axis].status = {};
+        travel_runtime_[axis].optimized_center.reset();
+    }
+}
+void MotionEngine::reset_axis_travel_learning(const std::size_t axis) {
+    if (axis >= travel_runtime_.size()) return;
+    auto& runtime = travel_runtime_[axis];
+    if (!runtime.profile_key.empty()) runtime.cache.erase(runtime.profile_key);
+    const auto active_key = runtime.profile_key;
+    reset_axis_travel_live_state(axis, active_key);
 }
 const ContactConfig& MotionEngine::contact_config() const noexcept { return contact_; }
 const std::array<AxisTuning, 6>& MotionEngine::axis_tuning() const noexcept { return tuning_; }
-const L0TravelPreferenceConfig& MotionEngine::l0_travel_preference() const noexcept { return l0_travel_config_; }
+const std::array<PreferredTravelConfig, 6>& MotionEngine::axis_travel_preferences() const noexcept { return travel_configs_; }
 
-void MotionEngine::reset_l0_travel_live_state(const std::string& profile_key) {
-    l0_travel_profile_key_ = profile_key;
-    l0_travel_profile_.reset();
-    l0_travel_transition_at_.reset();
-    l0_travel_has_sample_ = false;
-    l0_travel_anchor_ = 0.0;
-    l0_travel_extremum_ = 0.0;
-    l0_travel_direction_ = 0;
-    l0_travel_last_turning_point_.reset();
-    l0_travel_half_strokes_.clear();
-    l0_optimized_center_.reset();
-    l0_travel_status_ = l0_travel_config_.enabled
-        ? L0TravelStatus{L0TravelState::Learning, 0.0, 1.0, 0}
-        : L0TravelStatus{};
-    if (const auto cached = l0_travel_cache_.find(profile_key); cached != l0_travel_cache_.end()) {
-        l0_travel_profile_ = cached->second;
+void MotionEngine::reset_axis_travel_live_state(const std::size_t axis, const std::string& profile_key) {
+    auto& runtime = travel_runtime_[axis];
+    runtime.profile_key = profile_key;
+    runtime.profile.reset();
+    runtime.transition_at.reset();
+    runtime.has_sample = false;
+    runtime.anchor = 0.0;
+    runtime.extremum = 0.0;
+    runtime.direction = 0;
+    runtime.last_turning_point.reset();
+    runtime.half_strokes.clear();
+    runtime.optimized_center.reset();
+    runtime.status = travel_configs_[axis].enabled
+        ? PreferredTravelStatus{PreferredTravelState::Learning, 0.0, 1.0, 0}
+        : PreferredTravelStatus{};
+    if (const auto cached = runtime.cache.find(profile_key); cached != runtime.cache.end()) {
+        runtime.profile = cached->second;
     }
 }
 
-void MotionEngine::record_l0_turning_point(const double value, const std::chrono::microseconds now) {
-    if (l0_travel_last_turning_point_) {
-        const auto low = std::min(*l0_travel_last_turning_point_, value);
-        const auto high = std::max(*l0_travel_last_turning_point_, value);
-        if (high - low >= kL0TravelMinimumHalfStroke) {
-            l0_travel_half_strokes_.emplace_back(low, high);
-            if (l0_travel_half_strokes_.size() > kL0TravelCandidateLimit) {
-                l0_travel_half_strokes_.erase(l0_travel_half_strokes_.begin());
+void MotionEngine::record_axis_turning_point(const std::size_t axis, const double value, const std::chrono::microseconds now) {
+    auto& runtime = travel_runtime_[axis];
+    if (runtime.last_turning_point) {
+        const auto low = std::min(*runtime.last_turning_point, value);
+        const auto high = std::max(*runtime.last_turning_point, value);
+        if (high - low >= kTravelMinimumHalfStroke) {
+            runtime.half_strokes.emplace_back(low, high);
+            if (runtime.half_strokes.size() > kTravelCandidateLimit) {
+                runtime.half_strokes.erase(runtime.half_strokes.begin());
             }
         }
     }
-    l0_travel_last_turning_point_ = value;
+    runtime.last_turning_point = value;
 
     std::vector<double> travels;
-    travels.reserve(l0_travel_half_strokes_.size());
-    for (const auto& [low, high] : l0_travel_half_strokes_) travels.push_back(high - low);
+    travels.reserve(runtime.half_strokes.size());
+    for (const auto& [low, high] : runtime.half_strokes) travels.push_back(high - low);
     const auto candidate_travel = median(travels);
-    l0_travel_status_.observed_travel = candidate_travel;
-    l0_travel_status_.stable_half_strokes = static_cast<unsigned int>(l0_travel_half_strokes_.size());
-    if (l0_travel_half_strokes_.size() < kL0TravelRequiredStableHalfStrokes) return;
-    const auto tolerance = std::max(kL0TravelAbsoluteTolerance, candidate_travel * 0.2);
+    runtime.status.observed_travel = candidate_travel;
+    runtime.status.stable_half_strokes = static_cast<unsigned int>(runtime.half_strokes.size());
+    if (runtime.half_strokes.size() < kTravelRequiredStableHalfStrokes) return;
+    const auto tolerance = std::max(kTravelAbsoluteTolerance, candidate_travel * 0.2);
     std::vector<double> stable_travels;
     std::vector<double> stable_centers;
-    for (const auto& [low, high] : l0_travel_half_strokes_) {
+    for (const auto& [low, high] : runtime.half_strokes) {
         const auto travel = high - low;
         if (std::abs(travel - candidate_travel) > tolerance) continue;
         stable_travels.push_back(travel);
         stable_centers.push_back((low + high) * 0.5);
     }
-    l0_travel_status_.stable_half_strokes = static_cast<unsigned int>(stable_travels.size());
-    if (stable_travels.size() < kL0TravelRequiredStableHalfStrokes) return;
+    runtime.status.stable_half_strokes = static_cast<unsigned int>(stable_travels.size());
+    if (stable_travels.size() < kTravelRequiredStableHalfStrokes) return;
 
-    l0_travel_profile_ = L0TravelProfile{median(stable_centers), median(stable_travels)};
-    l0_travel_cache_[l0_travel_profile_key_] = *l0_travel_profile_;
-    l0_travel_transition_at_ = now;
+    runtime.profile = PreferredTravelProfile{median(stable_centers), median(stable_travels)};
+    runtime.cache[runtime.profile_key] = *runtime.profile;
+    runtime.transition_at = now;
     // Manual Gain must begin observing the newly expanded primary motion,
     // rather than retaining the smaller pre-learning envelope.
-    gain_envelope_valid_[0] = false;
+    gain_envelope_valid_[axis] = false;
 }
 
-double MotionEngine::optimize_l0(const double value, const std::string& profile_key, const std::chrono::microseconds now) {
-    l0_optimized_center_.reset();
-    if (!l0_travel_config_.enabled) {
-        l0_travel_status_ = {};
+double MotionEngine::optimize_axis(const std::size_t axis, const double value, const std::string& profile_key, const std::chrono::microseconds now) {
+    auto& runtime = travel_runtime_[axis];
+    const auto& config = travel_configs_[axis];
+    runtime.optimized_center.reset();
+    if (!config.enabled) {
+        runtime.status = {};
         return value;
     }
-    if (profile_key != l0_travel_profile_key_) reset_l0_travel_live_state(profile_key);
+    if (profile_key != runtime.profile_key) reset_axis_travel_live_state(axis, profile_key);
 
-    if (!l0_travel_profile_) {
-        if (!l0_travel_has_sample_) {
-            l0_travel_has_sample_ = true;
-            l0_travel_anchor_ = value;
-            l0_travel_extremum_ = value;
-        } else if (l0_travel_direction_ == 0) {
-            if (value >= l0_travel_anchor_ + kL0TravelReversalHysteresis) {
-                l0_travel_direction_ = 1;
-                l0_travel_extremum_ = value;
-            } else if (value <= l0_travel_anchor_ - kL0TravelReversalHysteresis) {
-                l0_travel_direction_ = -1;
-                l0_travel_extremum_ = value;
+    if (!runtime.profile) {
+        if (!runtime.has_sample) {
+            runtime.has_sample = true;
+            runtime.anchor = value;
+            runtime.extremum = value;
+        } else if (runtime.direction == 0) {
+            if (value >= runtime.anchor + kTravelReversalHysteresis) {
+                runtime.direction = 1;
+                runtime.extremum = value;
+            } else if (value <= runtime.anchor - kTravelReversalHysteresis) {
+                runtime.direction = -1;
+                runtime.extremum = value;
             }
-        } else if (l0_travel_direction_ > 0) {
-            if (value > l0_travel_extremum_) {
-                l0_travel_extremum_ = value;
-            } else if (value <= l0_travel_extremum_ - kL0TravelReversalHysteresis) {
-                record_l0_turning_point(l0_travel_extremum_, now);
-                l0_travel_direction_ = -1;
-                l0_travel_extremum_ = value;
+        } else if (runtime.direction > 0) {
+            if (value > runtime.extremum) {
+                runtime.extremum = value;
+            } else if (value <= runtime.extremum - kTravelReversalHysteresis) {
+                record_axis_turning_point(axis, runtime.extremum, now);
+                runtime.direction = -1;
+                runtime.extremum = value;
             }
         } else {
-            if (value < l0_travel_extremum_) {
-                l0_travel_extremum_ = value;
-            } else if (value >= l0_travel_extremum_ + kL0TravelReversalHysteresis) {
-                record_l0_turning_point(l0_travel_extremum_, now);
-                l0_travel_direction_ = 1;
-                l0_travel_extremum_ = value;
+            if (value < runtime.extremum) {
+                runtime.extremum = value;
+            } else if (value >= runtime.extremum + kTravelReversalHysteresis) {
+                record_axis_turning_point(axis, runtime.extremum, now);
+                runtime.direction = 1;
+                runtime.extremum = value;
             }
         }
     }
 
-    if (!l0_travel_profile_) {
-        l0_travel_status_.state = L0TravelState::Learning;
-        l0_travel_status_.applied_gain = 1.0;
+    if (!runtime.profile) {
+        runtime.status.state = PreferredTravelState::Learning;
+        runtime.status.applied_gain = 1.0;
         return value;
     }
 
-    const auto source_travel = std::max(l0_travel_profile_->travel, kEpsilon);
-    const auto desired_gain = l0_travel_config_.preferred_travel / source_travel;
-    const auto gain = std::clamp(desired_gain, 1.0, l0_travel_config_.maximum_gain);
+    const auto source_travel = std::max(runtime.profile->travel, kEpsilon);
+    const auto desired_gain = config.preferred_travel / source_travel;
+    const auto gain = std::clamp(desired_gain, 1.0, config.maximum_gain);
     const auto expanded_travel = std::min(1.0, source_travel * gain);
     const auto half_travel = expanded_travel * 0.5;
-    const auto target_center = std::clamp(l0_travel_profile_->center, half_travel, 1.0 - half_travel);
-    l0_optimized_center_ = target_center;
-    const auto optimized = clamp01(target_center + (value - l0_travel_profile_->center) * gain);
-    l0_travel_status_.observed_travel = source_travel;
-    l0_travel_status_.applied_gain = gain;
-    l0_travel_status_.stable_half_strokes = static_cast<unsigned int>(kL0TravelRequiredStableHalfStrokes);
-    l0_travel_status_.state = desired_gain > l0_travel_config_.maximum_gain + kEpsilon
-        ? L0TravelState::Limited : L0TravelState::Locked;
-    if (!l0_travel_transition_at_) return optimized;
-    const auto elapsed = std::max(std::chrono::microseconds::zero(), now - *l0_travel_transition_at_);
+    const auto target_center = std::clamp(runtime.profile->center, half_travel, 1.0 - half_travel);
+    runtime.optimized_center = target_center;
+    const auto optimized = clamp01(target_center + (value - runtime.profile->center) * gain);
+    runtime.status.observed_travel = source_travel;
+    runtime.status.applied_gain = gain;
+    runtime.status.stable_half_strokes = static_cast<unsigned int>(kTravelRequiredStableHalfStrokes);
+    runtime.status.state = desired_gain > config.maximum_gain + kEpsilon
+        ? PreferredTravelState::Limited : PreferredTravelState::Locked;
+    if (!runtime.transition_at) return optimized;
+    const auto elapsed = std::max(std::chrono::microseconds::zero(), now - *runtime.transition_at);
     const auto blend = smoothstep01(static_cast<double>(elapsed.count()) /
-                                    static_cast<double>(kL0TravelTransitionDuration.count()));
-    if (elapsed >= kL0TravelTransitionDuration) l0_travel_transition_at_.reset();
+                                    static_cast<double>(kTravelTransitionDuration.count()));
+    if (elapsed >= kTravelTransitionDuration) runtime.transition_at.reset();
     return value + (optimized - value) * blend;
 }
 
@@ -463,7 +477,7 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
             + frame.target_frame->origin_bone + ":" + frame.target_frame->forward_bone + ":"
             + frame.target_frame->left_bone + ":" + frame.target_frame->right_bone + ":"
             + frame.target_frame->translation_mode : "single_bone");
-    const auto l0_profile_key = frame.game_id + "|" + frame.action_id + "|" + reference->skeleton_id + "|"
+    const auto travel_profile_key = frame.game_id + "|" + frame.action_id + "|" + reference->skeleton_id + "|"
         + target_owner->skeleton_id + "|" + contact_.origin_bone + "|" + contact_.direction_bone + "|"
         + contact_.tip_bone + "|" + contact_.target_bone + "|" + contact_.target_secondary_bone + "|"
         + (frame.target_frame ? frame.target_frame->mode + ":" + frame.target_frame->source_bone + ":"
@@ -493,16 +507,21 @@ std::optional<EngineSnapshot> MotionEngine::calculate(const MotionFrame& frame) 
     // Per-action calibration describes the game skeleton's local direction;
     // the global control remains a user override, so two inversions cancel.
     if (contact_.invert_l0 != frame.direct_l0_inverted) raw[0] = 1.0 - raw[0];
-    raw[0] = optimize_l0(raw[0], l0_profile_key, frame.monotonic_time);
     raw[1] = symmetric01(dot(translation_delta, *reference_forward), contact_.lateral_range_meters);
     raw[2] = symmetric01(dot(translation_delta, *reference_right), contact_.lateral_range_meters);
     raw[3] = symmetric01(twist, contact_.twist_range_degrees);
     raw[4] = symmetric01(roll, contact_.tilt_range_degrees);
     raw[5] = symmetric01(pitch, contact_.tilt_range_degrees);
     for (std::size_t index = 0; index < raw.values.size(); ++index) {
-        if (!frame.active_axes[index]) raw[index] = 0.5;
+        raw[index] = frame.active_axes[index]
+            ? optimize_axis(index, raw[index], travel_profile_key, frame.monotonic_time)
+            : 0.5;
     }
-    return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw, frame.active_axes, binding_key), l0_travel_status_,
+    std::array<PreferredTravelStatus, 6> travel_statuses;
+    for (std::size_t index = 0; index < travel_statuses.size(); ++index) {
+        travel_statuses[index] = travel_runtime_[index].status;
+    }
+    return EngineSnapshot{frame.sequence, frame.monotonic_time, MotionState::Active, raw, tune(raw, frame.active_axes, binding_key), travel_statuses,
         {true, contact_valid, contact_valid ? "ok" : "outside_contact_radius", length, radius, axial, radial_distance, twist, roll, pitch,
             bilateral ? "bilateral_reference_axis"
                 : plane_intersection_blended ? "target_plane_blended"
@@ -529,8 +548,8 @@ Axes MotionEngine::tune(const Axes& raw, const std::array<bool, 6>& active_axes,
                 gain_max_[index] = std::max(gain_max_[index], raw[index]);
             }
         }
-        const auto gain_center = index == 0 && l0_optimized_center_
-            ? *l0_optimized_center_
+        const auto gain_center = travel_runtime_[index].optimized_center
+            ? *travel_runtime_[index].optimized_center
             : gain_envelope_valid_[index]
             ? (gain_min_[index] + gain_max_[index]) * 0.5
             : tuning_[index].center;
@@ -584,11 +603,11 @@ const char* to_string(const MotionState state) noexcept {
     }
 }
 
-const char* to_string(const L0TravelState state) noexcept {
+const char* to_string(const PreferredTravelState state) noexcept {
     switch (state) {
-    case L0TravelState::Learning: return "learning";
-    case L0TravelState::Locked: return "locked";
-    case L0TravelState::Limited: return "limited";
+    case PreferredTravelState::Learning: return "learning";
+    case PreferredTravelState::Locked: return "locked";
+    case PreferredTravelState::Limited: return "limited";
     default: return "disabled";
     }
 }
