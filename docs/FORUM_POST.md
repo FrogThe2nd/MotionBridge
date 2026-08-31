@@ -53,9 +53,14 @@ https://store.steampowered.com/app/1811180/
 4. Confirm that the selected destination contains these three paths:
 
 ```text
-<destination>\dwmapi.dll
-<destination>\ue4ss\UE4SS.dll
-<destination>\ue4ss\Mods\fd_tcode_probe\Scripts\main.lua
+<destination>
+├─ dwmapi.dll
+└─ ue4ss
+   ├─ UE4SS.dll
+   └─ Mods
+      └─ fd_tcode_probe
+         └─ Scripts
+            └─ main.lua
 ```
 
 5. Start Motion Bridge, then start Fallen Doll and enter an HAnime. The Mod intentionally adds no in-game menu, overlay, or debug console. A working installation is shown by Motion Bridge changing from **STREAM WAITING** to **STREAM ONLINE** after fresh motion frames arrive.
@@ -156,9 +161,14 @@ https://store.steampowered.com/app/1811180/
 4. 确认所选目标目录最终包含以下三个路径：
 
 ```text
-<目标目录>\dwmapi.dll
-<目标目录>\ue4ss\UE4SS.dll
-<目标目录>\ue4ss\Mods\fd_tcode_probe\Scripts\main.lua
+<目标目录>
+├─ dwmapi.dll
+└─ ue4ss
+   ├─ UE4SS.dll
+   └─ Mods
+      └─ fd_tcode_probe
+         └─ Scripts
+            └─ main.lua
 ```
 
 5. 先启动 Motion Bridge，再启动 Fallen Doll 并进入 HAnime。此 Mod 不会显示游戏内菜单、浮层或调试控制台；收到新动作帧后，Motion Bridge 从 **STREAM WAITING** 变为 **STREAM ONLINE**，才是可见的运行结果。
