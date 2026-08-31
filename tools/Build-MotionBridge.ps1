@@ -20,6 +20,10 @@ if (-not $CoreOnly) {
         else { throw "QtPrefix is required for the GUI build. Run Install-MotionBridgeToolchain.ps1 first, then pass -QtPrefix <Qt kit>." }
     }
     $configure += "-DCMAKE_PREFIX_PATH=$QtPrefix"
+    # Keep the Qt runtime visible to CTest and to binaries launched while the
+    # build is still in progress. This prevents misleading missing-DLL errors
+    # for Qt-based integration tests and smoke runs.
+    $env:PATH = "$(Join-Path $QtPrefix 'bin');$env:PATH"
 }
 
 if ([string]::IsNullOrWhiteSpace($MinGwRoot)) {

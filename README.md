@@ -72,7 +72,7 @@ It uses `windeployqt` to copy the Qt runtime beside the executable. The output s
 - USB sends TCode at 115200 baud.
 - Wi-Fi uses the same UDP TCode transport as the existing F8Studio project (`tcode.local:8000` by default).
 - Intiface connects to the user's Intiface Desktop WebSocket at `ws://127.0.0.1:12345`. It enables the first declared Position feature and maps L0 to it; it does not pretend that a generic Intiface device is an SR6.
-- Handy can also connect directly through its cloud API. It uses the HDSP position API: Motion Bridge coalesces live L0 into the latest target position and sends it at a limited rate. This preserves L0 direction and position while avoiding a backlog of cloud requests.
+- Handy can also connect directly through its cloud API. Following the proven MultiFunPlayer request pattern, Motion Bridge checks the connection and firmware, enters HDSP mode, then sends timed `/hdsp/xpt` targets. Live L0 updates are coalesced to the newest position and each duration follows the real cloud dispatch interval, avoiding a backlog of stale game motion. MultiFunPlayer is only a source-code reference and is not required or connected.
 - A start or imported configuration is always disarmed. Stream loss holds the final value for 250 ms, then returns to center over 600 ms.
 - Advanced output processing defaults to 50 Hz with a 600 ms soft start. Each axis card opens compact smart-limit and protection popups. A selected driver axis controls how much range or response speed the target axis retains through two freely movable curve points. Each axis can also be hard speed-limited or disabled independently, and a disabled axis stays at its configurable safe position.
 

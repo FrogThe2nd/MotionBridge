@@ -124,6 +124,16 @@ if(MOTION_BRIDGE_BUILD_GUI)
     target_link_libraries(MotionBridge PRIVATE
         motion_bridge_core Qt6::Core Qt6::Gui Qt6::Network Qt6::Quick Qt6::Quick3D Qt6::SerialPort Qt6::WebSockets
     )
+    if(MOTION_BRIDGE_BUILD_TESTS)
+        add_executable(handy_position_output_tests
+            tests/handy_position_output_tests.cpp
+            src/app/handy_position_output.hpp
+            src/app/handy_position_output.cpp
+        )
+        target_include_directories(handy_position_output_tests PRIVATE src/app)
+        target_link_libraries(handy_position_output_tests PRIVATE Qt6::Core Qt6::Network)
+        add_test(NAME handy_position_output_tests COMMAND handy_position_output_tests)
+    endif()
     if(WIN32)
         target_link_libraries(MotionBridge PRIVATE Dbghelp)
     endif()

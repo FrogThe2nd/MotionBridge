@@ -80,7 +80,7 @@ For ongoing support and release discussion, [join the MotionBridge Discord](http
 - This is an unofficial community project; it is not affiliated with the game developers or hardware vendors.
 - The packages do not include game assets, device drivers, or Intiface Desktop.
 - Intiface support currently uses the first declared **Position** feature and maps it from `L0`; it is not a generic SR6 mapping.
-- Direct Handy output uses HDSP position control. It coalesces `L0` into the newest target position and sends it at a limited rate, so Handy follows the L0 direction and position without accumulating a cloud request backlog.
+- Direct Handy output checks the connection and firmware, enters HDSP mode, and sends timed `/hdsp/xpt` position targets. It coalesces `L0` into the newest target and derives duration from the real cloud dispatch interval, so stale game-motion requests do not accumulate. MultiFunPlayer was used only as a source-code reference and is not required.
 - New or unusual scenes should always be checked in the preview first. Set conservative output ranges for your hardware.
 
 ---
@@ -160,5 +160,5 @@ MotionBridge 和 Mod 之间不是网络连接。Mod 会写入本地动作文件�
 - 这是非官方社区项目，与游戏开发商和设备厂商没有关联。
 - 发布包不包含游戏资源、设备驱动或 Intiface Desktop。
 - Intiface 当前只使用设备声明的第一个 **Position** 功能，并由 `L0` 驱动；它不是通用的 SR6 映射。
-- Handy 直连使用 HDSP 位置控制。程序会把 `L0` 合并为最新目标位置并以受限频率发送，使 Handy 跟随 L0 的方向与位置，同时避免云端请求积压。
+- Handy 直连会先检查连接和固件、进入 HDSP 模式，再发送 `/hdsp/xpt` 定时位置目标。程序只保留最新 `L0`，并按实际云端发送间隔计算到达时长，避免旧的游戏动作请求积压。MultiFunPlayer 仅作为公开源码参考，运行时不需要安装或连接。
 - 遇到新动作或特殊姿势，请先在预览中确认，并为自己的设备使用保守的输出范围。

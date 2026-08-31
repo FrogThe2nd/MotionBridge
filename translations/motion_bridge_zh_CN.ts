@@ -224,34 +224,44 @@
 <context>
     <name>HandyPositionOutput</name>
     <message>
-        <location filename="../src/app/handy_position_output.cpp" line="42"/>
+        <location filename="../src/app/handy_position_output.cpp" line="48"/>
         <source>Enter a Handy connection key</source>
         <translation>请输入 Handy 连接密钥</translation>
     </message>
     <message>
-        <location filename="../src/app/handy_position_output.cpp" line="83"/>
+        <location filename="../src/app/handy_position_output.cpp" line="87"/>
         <source>Checking Handy connection</source>
         <translation>正在检查 Handy 连接</translation>
     </message>
     <message>
-        <location filename="../src/app/handy_position_output.cpp" line="125"/>
+        <location filename="../src/app/handy_position_output.cpp" line="131"/>
         <source>Handy request failed: %1</source>
         <translation>Handy 请求失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/app/handy_position_output.cpp" line="145"/>
+        <location filename="../src/app/handy_position_output.cpp" line="141"/>
         <source>Handy is not connected in Handyverse</source>
         <translation>Handy 未在 Handyverse 中连接</translation>
     </message>
     <message>
-        <location filename="../src/app/handy_position_output.cpp" line="153"/>
-        <source>Handy armed: direct position control</source>
-        <translation>Handy 已启用：直连位置控制</translation>
+        <location filename="../src/app/handy_position_output.cpp" line="145"/>
+        <source>Checking Handy firmware</source>
+        <translation>正在检查 Handy 固件</translation>
     </message>
     <message>
-        <location filename="../src/app/handy_position_output.cpp" line="159"/>
-        <source>Handy following L0: direct position control</source>
-        <translation>Handy 正在跟随 L0：直连位置控制</translation>
+        <location filename="../src/app/handy_position_output.cpp" line="153"/>
+        <source>Handy firmware needs an update</source>
+        <translation>Handy 固件需要更新</translation>
+    </message>
+    <message>
+        <location filename="../src/app/handy_position_output.cpp" line="160"/>
+        <source>Handy armed: timed L0 position control</source>
+        <translation>Handy 已启用：L0 定时位置控制</translation>
+    </message>
+    <message>
+        <location filename="../src/app/handy_position_output.cpp" line="166"/>
+        <source>Handy following L0: timed position control</source>
+        <translation>Handy 正在跟随 L0：定时位置控制</translation>
     </message>
 </context>
 <context>
