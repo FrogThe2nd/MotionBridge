@@ -127,6 +127,38 @@
         <translation>输出已停止并归中</translation>
     </message>
     <message>
+        <source>Output disarmed safely</source>
+        <translation>输出已安全停止</translation>
+    </message>
+    <message>
+        <source>Enter a Handy connection key</source>
+        <translation>请输入 Handy 连接密钥</translation>
+    </message>
+    <message>
+        <source>Checking Handy connection</source>
+        <translation>正在检查 Handy 连接</translation>
+    </message>
+    <message>
+        <source>Handy request failed: %1</source>
+        <translation>Handy 请求失败：%1</translation>
+    </message>
+    <message>
+        <source>Handy is not connected in Handyverse</source>
+        <translation>Handy 未在 Handyverse 中连接</translation>
+    </message>
+    <message>
+        <source>Handy armed: direct connection (HAMP)</source>
+        <translation>Handy 已启用：直连连接（HAMP）</translation>
+    </message>
+    <message>
+        <source>Handy armed: waiting for L0 motion</source>
+        <translation>Handy 已启用：等待 L0 运动</translation>
+    </message>
+    <message>
+        <source>Handy moving: direct connection (HAMP)</source>
+        <translation>Handy 正在运动：直连连接（HAMP）</translation>
+    </message>
+    <message>
         <location filename="../src/app/device_router.cpp" line="158"/>
         <source>Intiface armed: %1 (L0 → first Linear feature)</source>
         <translation>Intiface 已启用：%1（L0 → 第一个 Linear 功能）</translation>
@@ -315,8 +347,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="683"/>
-        <source>USB · Wi-Fi · Intiface</source>
-        <translation>USB · Wi-Fi · Intiface</translation>
+        <source>USB · Wi-Fi · Intiface · Handy</source>
+        <translation>USB · Wi-Fi · Intiface · Handy</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="685"/>
@@ -378,6 +410,18 @@
         <location filename="../qml/Main.qml" line="792"/>
         <source>Intiface Desktop URL</source>
         <translation>Intiface Desktop 地址</translation>
+    </message>
+    <message>
+        <source>HANDY CONNECTION KEY</source>
+        <translation>HANDY 连接密钥</translation>
+    </message>
+    <message>
+        <source>Handyverse connection key</source>
+        <translation>Handyverse 连接密钥</translation>
+    </message>
+    <message>
+        <source>Session only · find it in Handyverse</source>
+        <translation>仅本次运行有效 · 请在 Handyverse 中获取</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="796"/>

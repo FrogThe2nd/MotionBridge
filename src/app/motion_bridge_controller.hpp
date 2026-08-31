@@ -27,6 +27,7 @@ class MotionBridgeController final : public QObject {
     Q_PROPERTY(QString wifiHost READ wifi_host NOTIFY settingsChanged)
     Q_PROPERTY(int wifiPort READ wifi_port NOTIFY settingsChanged)
     Q_PROPERTY(QString intifaceUrl READ intiface_url NOTIFY settingsChanged)
+    Q_PROPERTY(QString handyConnectionKey READ handy_connection_key NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisGains READ axis_gains NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMinimums READ axis_minimums NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList axisMaximums READ axis_maximums NOTIFY settingsChanged)
@@ -59,6 +60,7 @@ public:
     [[nodiscard]] QString wifi_host() const;
     [[nodiscard]] int wifi_port() const;
     [[nodiscard]] QString intiface_url() const;
+    [[nodiscard]] QString handy_connection_key() const;
     [[nodiscard]] QVariantList axis_gains() const;
     [[nodiscard]] QVariantList axis_minimums() const;
     [[nodiscard]] QVariantList axis_maximums() const;
@@ -77,6 +79,7 @@ public:
     Q_INVOKABLE void set_usb_port(const QString& port);
     Q_INVOKABLE void set_wifi_endpoint(const QString& host, int port);
     Q_INVOKABLE void set_intiface_url(const QString& url);
+    Q_INVOKABLE void set_handy_connection_key(const QString& key);
     Q_INVOKABLE void set_axis_gain(int axis, double value);
     Q_INVOKABLE void set_axis_range(int axis, double minimum, double maximum);
     Q_INVOKABLE void set_output_rate_hz(int value);
@@ -125,6 +128,7 @@ private:
     QString wifi_host_{"tcode.local"};
     int wifi_port_{8000};
     QString intiface_url_{"ws://127.0.0.1:12345"};
+    QString handy_connection_key_;
     QVariantList axis_gains_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
     QVariantList axis_minimums_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     QVariantList axis_maximums_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0};

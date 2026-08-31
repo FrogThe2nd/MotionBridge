@@ -21,6 +21,7 @@ DeviceRouter::Mode parse_mode(const QString& value) {
     if (value == u"usb") return DeviceRouter::Mode::Usb;
     if (value == u"wifi") return DeviceRouter::Mode::Wifi;
     if (value == u"intiface") return DeviceRouter::Mode::Intiface;
+    if (value == u"handy") return DeviceRouter::Mode::Handy;
     return DeviceRouter::Mode::None;
 }
 
@@ -29,6 +30,7 @@ QString mode_name(const DeviceRouter::Mode mode) {
     case DeviceRouter::Mode::Usb: return QStringLiteral("usb");
     case DeviceRouter::Mode::Wifi: return QStringLiteral("wifi");
     case DeviceRouter::Mode::Intiface: return QStringLiteral("intiface");
+    case DeviceRouter::Mode::Handy: return QStringLiteral("handy");
     default: return QStringLiteral("none");
     }
 }
@@ -79,6 +81,7 @@ void RealtimePipeline::set_output_mode(const QString& mode) {
 void RealtimePipeline::set_usb_port(const QString& port) { usb_port_ = port.trimmed(); device_->set_usb_port(usb_port_); auto settings = motion_bridge_settings(); settings.setValue("device/usbPort", usb_port_); publish_connection_settings(); }
 void RealtimePipeline::set_wifi_endpoint(const QString& host, const int port) { wifi_host_ = host.trimmed(); wifi_port_ = std::clamp(port, 1, 65535); device_->set_wifi_endpoint(wifi_host_, static_cast<quint16>(wifi_port_)); auto settings = motion_bridge_settings(); settings.setValue("device/wifiHost", wifi_host_); settings.setValue("device/wifiPort", wifi_port_); publish_connection_settings(); }
 void RealtimePipeline::set_intiface_url(const QString& url) { intiface_url_ = url.trimmed(); device_->set_intiface_url(QUrl(intiface_url_)); auto settings = motion_bridge_settings(); settings.setValue("device/intifaceUrl", intiface_url_); publish_connection_settings(); }
+void RealtimePipeline::set_handy_connection_key(const QString& key) { handy_connection_key_ = key.trimmed(); device_->set_handy_connection_key(handy_connection_key_); publish_connection_settings(); }
 
 void RealtimePipeline::set_axis_gain(const int axis, const double value) {
     if (axis < 0 || axis >= 6) return;
@@ -381,6 +384,9 @@ void RealtimePipeline::load_settings() {
     device_->set_usb_port(usb_port_);
     device_->set_wifi_endpoint(wifi_host_, static_cast<quint16>(std::clamp(wifi_port_, 1, 65535)));
     device_->set_intiface_url(QUrl(intiface_url_));
+    // The Handy connection key grants cloud control of a device. Deliberately
+    // keep it in memory only instead of writing it to portable config files.
+    handy_connection_key_.clear();
     output_rate_hz_ = std::clamp(settings.value("output/rateHz", 50).toInt(), 20, 100);
     output_timer_->setInterval(std::max(1, static_cast<int>(std::lround(1000.0 / output_rate_hz_))));
     auto output_config = output_processor_.config();
@@ -482,7 +488,7 @@ void RealtimePipeline::load_settings() {
 }
 
 void RealtimePipeline::publish_connection_settings() {
-    emit connection_settings_changed(usb_port_, wifi_host_, wifi_port_, intiface_url_);
+    emit connection_settings_changed(usb_port_, wifi_host_, wifi_port_, intiface_url_, handy_connection_key_);
 }
 
 void RealtimePipeline::publish_axis_gains() {

@@ -20,8 +20,8 @@ MotionBridgeController::MotionBridgeController(QObject* parent) : QObject(parent
         output_status_ = status; armed_ = armed; output_mode_ = mode; emit statusChanged();
     });
     connect(pipeline_, &RealtimePipeline::spool_path_changed, this, [this](const QString& path) { spool_path_ = path; emit statusChanged(); });
-    connect(pipeline_, &RealtimePipeline::connection_settings_changed, this, [this](const QString& usb_port, const QString& wifi_host, const int wifi_port, const QString& intiface_url) {
-        usb_port_ = usb_port; wifi_host_ = wifi_host; wifi_port_ = wifi_port; intiface_url_ = intiface_url; emit settingsChanged();
+    connect(pipeline_, &RealtimePipeline::connection_settings_changed, this, [this](const QString& usb_port, const QString& wifi_host, const int wifi_port, const QString& intiface_url, const QString& handy_connection_key) {
+        usb_port_ = usb_port; wifi_host_ = wifi_host; wifi_port_ = wifi_port; intiface_url_ = intiface_url; handy_connection_key_ = handy_connection_key; emit settingsChanged();
     });
     connect(pipeline_, &RealtimePipeline::axis_gains_changed, this, [this](const QVariantList& gains) { axis_gains_ = gains; emit settingsChanged(); });
     connect(pipeline_, &RealtimePipeline::axis_ranges_changed, this, [this](const QVariantList& minimums, const QVariantList& maximums) {
@@ -79,6 +79,7 @@ QString MotionBridgeController::usb_port() const { return usb_port_; }
 QString MotionBridgeController::wifi_host() const { return wifi_host_; }
 int MotionBridgeController::wifi_port() const { return wifi_port_; }
 QString MotionBridgeController::intiface_url() const { return intiface_url_; }
+QString MotionBridgeController::handy_connection_key() const { return handy_connection_key_; }
 QVariantList MotionBridgeController::axis_gains() const { return axis_gains_; }
 QVariantList MotionBridgeController::axis_minimums() const { return axis_minimums_; }
 QVariantList MotionBridgeController::axis_maximums() const { return axis_maximums_; }
@@ -97,6 +98,7 @@ void MotionBridgeController::set_output_mode(const QString& mode) { QMetaObject:
 void MotionBridgeController::set_usb_port(const QString& port) { QMetaObject::invokeMethod(pipeline_, "set_usb_port", Qt::QueuedConnection, Q_ARG(QString, port)); }
 void MotionBridgeController::set_wifi_endpoint(const QString& host, const int port) { QMetaObject::invokeMethod(pipeline_, "set_wifi_endpoint", Qt::QueuedConnection, Q_ARG(QString, host), Q_ARG(int, port)); }
 void MotionBridgeController::set_intiface_url(const QString& url) { QMetaObject::invokeMethod(pipeline_, "set_intiface_url", Qt::QueuedConnection, Q_ARG(QString, url)); }
+void MotionBridgeController::set_handy_connection_key(const QString& key) { QMetaObject::invokeMethod(pipeline_, "set_handy_connection_key", Qt::QueuedConnection, Q_ARG(QString, key)); }
 void MotionBridgeController::set_axis_gain(const int axis, const double value) { QMetaObject::invokeMethod(pipeline_, "set_axis_gain", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, value)); }
 void MotionBridgeController::set_axis_range(const int axis, const double minimum, const double maximum) { QMetaObject::invokeMethod(pipeline_, "set_axis_range", Qt::QueuedConnection, Q_ARG(int, axis), Q_ARG(double, minimum), Q_ARG(double, maximum)); }
 void MotionBridgeController::set_output_rate_hz(const int value) { QMetaObject::invokeMethod(pipeline_, "set_output_rate_hz", Qt::QueuedConnection, Q_ARG(int, value)); }

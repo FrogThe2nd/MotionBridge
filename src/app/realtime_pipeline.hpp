@@ -27,6 +27,7 @@ public slots:
     void set_usb_port(const QString& port);
     void set_wifi_endpoint(const QString& host, int port);
     void set_intiface_url(const QString& url);
+    void set_handy_connection_key(const QString& key);
     void set_axis_gain(int axis, double value);
     void set_axis_range(int axis, double minimum, double maximum);
     void set_output_rate_hz(int value);
@@ -53,7 +54,8 @@ signals:
     void stream_status_changed(bool connected, const QString& text);
     void output_status_changed(const QString& text, bool armed, const QString& mode);
     void spool_path_changed(const QString& path);
-    void connection_settings_changed(const QString& usb_port, const QString& wifi_host, int wifi_port, const QString& intiface_url);
+    void connection_settings_changed(const QString& usb_port, const QString& wifi_host, int wifi_port,
+                                     const QString& intiface_url, const QString& handy_connection_key);
     void axis_gains_changed(const QVariantList& gains);
     void axis_ranges_changed(const QVariantList& minimums, const QVariantList& maximums);
     void output_processing_settings_changed(int rate_hz, bool soft_start_enabled, int soft_start_duration_ms,
@@ -97,6 +99,7 @@ private:
     QString wifi_host_{"tcode.local"};
     int wifi_port_{8000};
     QString intiface_url_{"ws://127.0.0.1:12345"};
+    QString handy_connection_key_;
     QString theme_{"dark"};
     QString reference_plane_label_;
     QVariantList reference_participants_;

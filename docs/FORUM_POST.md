@@ -1,4 +1,4 @@
-<!-- Suggested forum title: [Release][Multi-Axis] Motion Bridge + Fallen Doll Mod — TCode & Intiface (OSR2 / SR6) -->
+<!-- Suggested forum title: [Release][Multi-Axis] Motion Bridge + Fallen Doll Mod — TCode, Intiface & Handy (OSR2 / SR6) -->
 
 ![PixPin_2026-08-27_03-20-02|690x374](upload://cvGVBFJtcoofbpj2SVQhdvHgOrE.jpeg)
 ![PixPin_2026-08-27_03-21-04|690x375](upload://xEfgn154cZX6ZGT6s5J4YBJMRUm.jpeg)
@@ -20,7 +20,7 @@ https://store.steampowered.com/app/1811180/
 ### Motion Bridge
 
 - Real-time six-axis `L0/L1/L2/R0/R1/R2` motion for SR6; OSR2 uses `L0`.
-- USB TCode, Wi-Fi UDP TCode (default: `tcode.local:8000`), and Intiface Desktop output.
+- USB TCode, Wi-Fi UDP TCode (default: `tcode.local:8000`), Intiface Desktop, and direct Handy output.
 - Compatible with Intiface Central 2.6.
 - A separate live SR6/OSR 3D preview, which can stay on top of the game window.
 - Per-axis gain and output-range controls, cross-axis smart limits with an editable two-point curve, hard speed limits, output switches, and configurable safe positions. A selected driver axis can dynamically reduce another axis' range or response speed. Axis cards and the 3D preview show the final protected signal even while hardware output is disarmed. Settings are saved with the portable app.
@@ -36,7 +36,7 @@ https://store.steampowered.com/app/1811180/
 3. Download and extract the latest **Motion Bridge** portable ZIP, then start `MotionBridge.exe`.
 4. Start Fallen Doll and enter an HAnime. In Motion Bridge, wait until **STREAM** shows **ONLINE**.
 5. Open the 3D preview and verify that the motion looks correct before connecting hardware.
-6. Choose one output method: **USB**, **Wi-Fi**, or **Intiface**. Check the port/address, set safe per-axis ranges, then explicitly select **ARM OUTPUT**.
+6. Choose one output method: **USB**, **Wi-Fi**, **Intiface**, or **Handy**. Check the port/address, set safe per-axis ranges, then explicitly select **ARM OUTPUT**. Direct Handy output needs its Handyverse connection key; the key is only kept until Motion Bridge closes.
 
 Do not arm output until the preview is correct. Stop/disarm the app before changing hardware or testing a new pose.
 
@@ -79,7 +79,8 @@ For ongoing support and release discussion, [join the MotionBridge Discord](http
 
 - This is an unofficial community project; it is not affiliated with the game developers or hardware vendors.
 - The packages do not include game assets, device drivers, or Intiface Desktop.
-- Intiface support currently uses the first declared **Linear** feature and maps it from `L0`; it is not a generic SR6 mapping.
+- Intiface support currently uses the first declared **Position** feature and maps it from `L0`; it is not a generic SR6 mapping.
+- Direct Handy output uses HAMP rather than a per-frame cloud position stream. After it observes at least 5% of live `L0` travel, it updates the Handy slide range and velocity at a limited rate.
 - New or unusual scenes should always be checked in the preview first. Set conservative output ranges for your hardware.
 
 ---
@@ -99,7 +100,7 @@ https://store.steampowered.com/app/1811180/
 ### Motion Bridge
 
 - SR6 实时六轴 `L0/L1/L2/R0/R1/R2`；OSR2 使用 `L0`。
-- 支持 USB TCode、Wi-Fi UDP TCode（默认 `tcode.local:8000`）和 Intiface Desktop 输出。
+- 支持 USB TCode、Wi-Fi UDP TCode（默认 `tcode.local:8000`）、Intiface Desktop 和 Handy 直连输出。
 - 兼容 Intiface Central 2.6。
 - 独立的 SR6/OSR 实时 3D 预览窗口，可置顶显示在游戏上方。
 - 每轴增益与输出范围、带双点曲线的跨轴智能限制、硬性速度限制、输出开关和安全位置设置；智能限制可根据所选驱动轴的位置，动态缩小另一个轴的行程或响应速度。即使硬件输出未解锁，轴卡和 3D 预览也会显示最终处理后的信号。便携版会保存设置。
@@ -115,7 +116,7 @@ https://store.steampowered.com/app/1811180/
 3. 下载并解压最新版 **Motion Bridge** 便携包，然后启动 `MotionBridge.exe`。
 4. 启动 Fallen Doll 并进入 HAnime。在 Motion Bridge 中等待 **STREAM** 显示为 **ONLINE**。
 5. 打开 3D 预览，先确认动作正确，再连接设备。
-6. 选择一种输出方式：**USB**、**Wi-Fi** 或 **Intiface**。确认端口/地址，为设备设置安全的各轴范围后，再手动点击 **ARM OUTPUT**。
+6. 选择一种输出方式：**USB**、**Wi-Fi**、**Intiface** 或 **Handy**。确认端口/地址，为设备设置安全的各轴范围后，再手动点击 **ARM OUTPUT**。Handy 直连需要填写 Handyverse 连接密钥；密钥只会保留到 Motion Bridge 关闭。
 
 预览未确认正确前，请不要解锁输出。更换硬件或测试新姿势前，请先停止/解除输出。
 
@@ -158,5 +159,6 @@ MotionBridge 和 Mod 之间不是网络连接。Mod 会写入本地动作文件�
 
 - 这是非官方社区项目，与游戏开发商和设备厂商没有关联。
 - 发布包不包含游戏资源、设备驱动或 Intiface Desktop。
-- Intiface 当前只使用设备声明的第一个 **Linear** 功能，并由 `L0` 驱动；它不是通用的 SR6 映射。
+- Intiface 当前只使用设备声明的第一个 **Position** 功能，并由 `L0` 驱动；它不是通用的 SR6 映射。
+- Handy 直连使用 HAMP，而不是逐帧云端位置流。检测到至少 5% 的实时 `L0` 行程后，程序会以受限频率更新 Handy 的行程范围和速度。
 - 遇到新动作或特殊姿势，请先在预览中确认，并为自己的设备使用保守的输出范围。

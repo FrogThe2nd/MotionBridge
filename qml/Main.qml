@@ -696,7 +696,7 @@ ApplicationWindow {
                 color: window.footerSurface
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 18; spacing: 6
-                    DisclosureButton { label: qsTr("Device connection"); detail: qsTr("USB · Wi-Fi · Intiface"); opened: window.connectionExpanded; onClicked: window.toggleConnection() }
+                    DisclosureButton { label: qsTr("Device connection"); detail: qsTr("USB · Wi-Fi · Intiface · Handy"); opened: window.connectionExpanded; onClicked: window.toggleConnection() }
                     DisclosureButton { label: qsTr("Motion tuning"); detail: "L0 · L1 · L2 · R0 · R1 · R2"; opened: window.tuningExpanded; onClicked: window.toggleTuning() }
                     ViewerButton { label: qsTr("3D preview"); detail: qsTr("Separate window"); opened: previewWindow.visible; onClicked: window.togglePreview() }
                     Label { text: qsTr("OUTPUT SAFE"); color: window.textMuted; font.pixelSize: 9; font.bold: true; font.letterSpacing: 0.8; Layout.leftMargin: 10 }
@@ -735,7 +735,7 @@ ApplicationWindow {
                     RowLayout {
                         visible: window.connectionExpanded
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 300
+                        Layout.preferredHeight: 360
                         spacing: 14
                         Rectangle {
                             visible: window.connectionExpanded
@@ -762,6 +762,7 @@ ApplicationWindow {
                                     ModeButton { modeName: "usb"; label: "USB" }
                                     ModeButton { modeName: "wifi"; label: "WI-FI" }
                                     ModeButton { modeName: "intiface"; label: "INTIFACE" }
+                                    ModeButton { modeName: "handy"; label: "HANDY" }
                                 }
                                 GridLayout {
                                     Layout.fillWidth: true
@@ -817,6 +818,17 @@ ApplicationWindow {
                                         Layout.fillWidth: true; spacing: 4
                                         Label { text: qsTr("INTIFACE URL"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
                                         DarkField { text: companion.intifaceUrl; placeholderText: qsTr("Intiface Desktop URL"); onEditingFinished: companion.set_intiface_url(text) }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 4
+                                        Label { text: qsTr("HANDY CONNECTION KEY"); color: window.textMuted; font.pixelSize: 8; font.bold: true; font.letterSpacing: 0.7 }
+                                        DarkField {
+                                            text: companion.handyConnectionKey
+                                            placeholderText: qsTr("Handyverse connection key")
+                                            echoMode: TextInput.Password
+                                            onEditingFinished: companion.set_handy_connection_key(text)
+                                        }
+                                        Label { text: qsTr("Session only · find it in Handyverse"); color: window.textMuted; font.pixelSize: 8 }
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true; spacing: 4
