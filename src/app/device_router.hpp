@@ -61,6 +61,7 @@ private:
     int intiface_feature_index_{-1};
     int intiface_position_min_{};
     int intiface_position_max_{100};
+    int intiface_position_duration_{-1};
     motion_bridge::Axes last_sent_axes_;
     std::array<bool, 6> last_sent_valid_{};
 };

@@ -156,16 +156,19 @@ void DeviceRouter::send_output(const Axes& axes, const std::chrono::milliseconds
     }
     if (mode_ == Mode::Intiface && intiface_->state() == QAbstractSocket::ConnectedState &&
         intiface_device_index_ >= 0 && intiface_feature_index_ >= 0) {
-        if (!force_full && last_sent_valid_[0] && std::abs(last_sent_axes_[0] - axes[0]) < 0.005) return;
         const auto position = static_cast<int>(std::lround(intiface_position_min_ +
             std::clamp(axes[0], 0.0, 1.0) * (intiface_position_max_ - intiface_position_min_)));
+        if (!force_full && last_sent_valid_[0] && std::abs(last_sent_axes_[0] - static_cast<double>(position)) < 1.0) return;
+        const auto command = intiface_position_duration_ < 0
+                                 ? QJsonObject{{"Position", QJsonObject{{"Value", position}}}}
+                                 : QJsonObject{{"HwPositionWithDuration", QJsonObject{{"Value", position}, {"Duration", intiface_position_duration_}}}};
         const auto message = QJsonObject{{"OutputCmd", QJsonObject{
             {"Id", intiface_request_id_++}, {"DeviceIndex", intiface_device_index_},
             {"FeatureIndex", intiface_feature_index_},
-            {"Command", QJsonObject{{"Position", QJsonObject{{"Value", position}}}}}
+            {"Command", command}
         }}};
         intiface_->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonArray{message}).toJson(QJsonDocument::Compact)));
-        last_sent_axes_[0] = axes[0];
+        last_sent_axes_[0] = position;
         last_sent_valid_[0] = true;
         return;
     }
@@ -218,20 +221,27 @@ void DeviceRouter::select_intiface_device(const QJsonObject& device) {
     const auto features = device.value("DeviceFeatures").toObject();
     for (auto it = features.begin(); it != features.end(); ++it) {
         const auto feature = it.value().toObject();
-        const auto position = feature.value("Output").toObject().value("Position").toObject();
-        const auto range = position.value("Value").toArray();
-        if (position.isEmpty() || range.size() != 2) continue;
+        const auto output = feature.value("Output").toObject();
+        const auto position = output.contains("HwPositionWithDuration")
+                                  ? output.value("HwPositionWithDuration").toObject()
+                                  : output.value("Position").toObject();
+        const auto pos_range = position.value("Value").toArray();
+        const auto dur_range = position.value("Duration").toArray();
+        if (position.isEmpty() || pos_range.size() != 2 || (dur_range.size() != 2 && !dur_range.empty())) continue;
 
-        const auto minimum = range.at(0).toInt();
-        const auto maximum = range.at(1).toInt();
+        const auto minimum_pos = pos_range.at(0).toInt();
+        const auto maximum_pos = pos_range.at(1).toInt();
+        const auto minimum_dur = dur_range.empty() ? -1 : dur_range.at(0).toInt(-1);
+        const auto maximum_dur = dur_range.empty() ? -1 : dur_range.at(1).toInt(-1);
         const auto device_index = device.value("DeviceIndex").toInt(-1);
         const auto feature_index = feature.value("FeatureIndex").toInt(it.key().toInt());
-        if (maximum < minimum || device_index < 0 || feature_index < 0) continue;
+        if (maximum_pos < minimum_pos || maximum_dur < minimum_dur || (minimum_dur < 0 && !dur_range.empty()) || device_index < 0 || feature_index < 0) continue;
 
         intiface_device_index_ = device_index;
         intiface_feature_index_ = feature_index;
-        intiface_position_min_ = minimum;
-        intiface_position_max_ = maximum;
+        intiface_position_min_ = minimum_pos;
+        intiface_position_max_ = maximum_pos;
+        intiface_position_duration_ = minimum_dur;
         reset_output_tracking();
         emit status_changed(tr("Intiface armed: %1 (L0 → first Position feature)").arg(device.value("DeviceName").toString()), true);
         return;
